@@ -26,7 +26,7 @@ npm run build
 npm start   # production, same port
 ```
 
-Observations and the wall numbers live in `data/walpole.sqlite`, created on first run. Fetched tide, weather, and water feeds are cached under `data/cache/`. Neither is committed.
+Observations and the wall numbers live in `data/walpole.sqlite`, created on first run. Fetched tide, weather, and water feeds are cached under `data/cache/`. Neither is committed. On Vercel those files are created under `/tmp` instead, so the glance can render on a read-only app directory. That copy is ephemeral. See [DEPLOY.md](DEPLOY.md).
 
 On a dev machine with no `ADMIN_PASSWORD`, the keeper's desk password is `walpole-dip`. Set a real password before you expose the app.
 
@@ -40,6 +40,7 @@ Copy `.env.example` if you want. No API key is required for the default sources.
 | `ADMIN_SESSION_SECRET` | Signs the desk cookie. Defaults to the admin password if unset. Set a long random string in production. |
 | `CHOP_LIGHT_KT` | Provisional chop pilot, in knots. With `CHOP_STRONG_KT` it splits the wind into five phrases. Default 10. |
 | `CHOP_STRONG_KT` | At or above this, a northerly or onshore-ish wind is the top phrase. Default 18. Must sit above `CHOP_LIGHT_KT`. |
+| `DATA_DIR` | Optional writable directory for SQLite and the feed cache. Unset locally means `data/`. Unset on Vercel means `/tmp`. |
 
 There is no Admiralty, WorldTides, or Surfers Against Sewage key in this repo. Do not invent one.
 
