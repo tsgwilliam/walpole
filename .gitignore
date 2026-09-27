@@ -38,6 +38,7 @@ yarn-error.log*
 /data/*.sqlite
 /data/*.sqlite-*
 /data/cache/
+.walpole-db-test-*/
 
 # research dumps from setup
 /agent-tools/

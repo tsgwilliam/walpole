@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_WALL } from "./constants";
+import { blockedWriteDir, isEphemeralDatabaseFile, sqliteCandidates } from "./storage-path";
 
 type SqliteDatabase = {
   exec: (sql: string) => void;
+  close: () => void;
   prepare: (sql: string) => {
     run: (...params: unknown[]) => { changes: number; lastInsertRowid: number | bigint };
     get: (...params: unknown[]) => unknown;
@@ -28,7 +30,11 @@ export type Db = {
   prepare: (sql: string) => Statement;
 };
 
-const globalDb = globalThis as unknown as { __walpoleDb?: Db };
+const globalDb = globalThis as unknown as {
+  __walpoleDb?: Db;
+  __walpoleRaw?: SqliteDatabase;
+  __walpoleDbFile?: string;
+};
 
 function wrap(db: SqliteDatabase): Db {
   return {
@@ -55,7 +61,7 @@ function wrap(db: SqliteDatabase): Db {
   };
 }
 
-function migrate(db: Db) {
+function migrate(db: Db, file: string) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -100,6 +106,9 @@ function migrate(db: Db) {
     for (const [key, value] of Object.entries(seed)) insert.run(key, value);
   }
 
+  // Demo plates are for a durable local file. An ephemeral database would
+  // show the same two approved notes again after every cold start.
+  if (isEphemeralDatabaseFile(file)) return;
   const notes = db.prepare("SELECT COUNT(*) AS n FROM observations").get() as { n: number };
   if (Number(notes?.n ?? 0) === 0) seedObservations(db);
 }
@@ -175,29 +184,82 @@ function seedObservations(db: Db) {
   );
 }
 
+const SQLITE_MISSING = "This app needs Node.js 22, which provides the built-in SQLite module.";
+
 function openSqlite(file: string): SqliteDatabase {
   const getBuiltin = (process as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
   if (typeof getBuiltin !== "function") {
-    throw new Error("This app needs Node.js 22, which provides the built-in SQLite module.");
+    throw new Error(SQLITE_MISSING);
   }
   const loaded = getBuiltin("node:" + "sqlite") as Partial<SqliteModule> | undefined;
   const DatabaseSync = loaded?.DatabaseSync;
   if (!DatabaseSync) {
-    throw new Error("This app needs Node.js 22, which provides the built-in SQLite module.");
+    throw new Error(SQLITE_MISSING);
   }
   return new DatabaseSync(file);
 }
 
+function openResilient(): { sqlite: SqliteDatabase; file: string } {
+  let missing: Error | null = null;
+  for (const file of sqliteCandidates()) {
+    try {
+      if (file !== ":memory:") {
+        const dir = path.dirname(file);
+        if (blockedWriteDir(dir)) {
+          throw new Error("Refusing to create a database under the app directory.");
+        }
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const sqlite = openSqlite(file);
+      if (file !== ":memory:") {
+        try {
+          sqlite.exec("PRAGMA journal_mode = WAL;");
+        } catch {
+          // Some filesystems reject WAL. The default journal still stores the rows.
+        }
+      }
+      return { sqlite, file };
+    } catch (error) {
+      if (error instanceof Error && error.message === SQLITE_MISSING) missing = error;
+    }
+  }
+  if (missing) throw missing;
+  throw new Error("Could not open a SQLite database.");
+}
+
+/** Path actually opened, or `:memory:` when no directory would accept the file. */
+export function currentDatabaseFile(): string | null {
+  return globalDb.__walpoleDbFile ?? null;
+}
+
+export function resetDbForTests() {
+  try {
+    globalDb.__walpoleRaw?.close();
+  } catch {
+    // Already closed.
+  }
+  delete globalDb.__walpoleDb;
+  delete globalDb.__walpoleRaw;
+  delete globalDb.__walpoleDbFile;
+}
+
 export function getDb(): Db {
   if (globalDb.__walpoleDb) return globalDb.__walpoleDb;
-  const dir = path.join(process.cwd(), "data");
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, "walpole.sqlite");
-  const sqlite = openSqlite(file);
+  const { sqlite, file } = openResilient();
   const db = wrap(sqlite);
-  db.exec("PRAGMA journal_mode = WAL;");
-  migrate(db);
+  try {
+    migrate(db, file);
+  } catch (error) {
+    try {
+      sqlite.close();
+    } catch {
+      // The failed file is left for the next attempt to replace.
+    }
+    throw error;
+  }
   globalDb.__walpoleDb = db;
+  globalDb.__walpoleRaw = sqlite;
+  globalDb.__walpoleDbFile = file;
   return db;
 }
 
@@ -212,8 +274,24 @@ export type StoredSettings = {
   pollutionOverride: PollutionOverride;
 };
 
+export function defaultSettings(): StoredSettings {
+  return {
+    wallTopMetresCD: DEFAULT_WALL.wallTopMetresCD,
+    overflowMetresCD: DEFAULT_WALL.overflowMetresCD,
+    approachBandMetres: DEFAULT_WALL.approachBandMetres,
+    waterfallWindowMinutes: DEFAULT_WALL.waterfallWindowMinutes,
+    waveAllowanceMetres: DEFAULT_WALL.waveAllowanceMetres,
+    pollutionOverride: "auto",
+  };
+}
+
 export function readSettings(): StoredSettings {
-  const db = getDb();
+  let db: Db;
+  try {
+    db = getDb();
+  } catch {
+    return defaultSettings();
+  }
   const rows = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const num = (key: string, fallback: number) => {
@@ -282,10 +360,14 @@ export function listObservations(status?: ObservationRow["status"]): Observation
 }
 
 export function approvedObservations(limit = 8): ObservationRow[] {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM observations WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?")
-    .all(limit) as ObservationRow[];
+  try {
+    const db = getDb();
+    return db
+      .prepare("SELECT * FROM observations WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as ObservationRow[];
+  } catch {
+    return [];
+  }
 }
 
 export function insertObservation(
