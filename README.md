@@ -1,0 +1,106 @@
+# Walpole Bay Conditions
+
+A mobile-first notebook for one place: [Walpole Bay Tidal Pool](https://heritage.kent.gov.uk/Designation/DKE22446/), Margate, Kent. It helps a swimmer look at today — tide, weather, bathing-water class, sewage status, and a provisional guess at whether the walls are standing clear.
+
+The name is a placeholder.
+
+## The skin
+
+The paper grid, coral rule, monospace stream, and proof-sheet manners are the **Tributary** skin, shared by **Kem at Glitch Cat Club**. Thank you. The notebook look is his design; this app only borrows it. It is not a Glitch Cat Club product.
+
+## Run
+
+Node.js 22 or newer (the app uses the built-in `node:sqlite` module).
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
+
+```bash
+npm test    # wall-state, London time, and the chop pilot
+npm run lint
+npm run build
+npm start   # production, same port
+```
+
+Observations and the wall numbers live in `data/walpole.sqlite`, created on first run. Fetched tide, weather, and water feeds are cached under `data/cache/`. Neither is committed.
+
+On a dev machine with no `ADMIN_PASSWORD`, the keeper's desk password is `walpole-dip`. Set a real password before you expose the app.
+
+## Environment
+
+Copy `.env.example` if you want. No API key is required for the default sources. Vercel import and the SQLite limit are in [DEPLOY.md](DEPLOY.md).
+
+| Variable | Purpose |
+| --- | --- |
+| `ADMIN_PASSWORD` | Keeper's desk. Required in production. Dev fallback is `walpole-dip` only when this is unset and `NODE_ENV` is not `production`. |
+| `ADMIN_SESSION_SECRET` | Signs the desk cookie. Defaults to the admin password if unset. Set a long random string in production. |
+| `CHOP_LIGHT_KT` | Provisional chop pilot, in knots. With `CHOP_STRONG_KT` it splits the wind into five phrases. Default 10. |
+| `CHOP_STRONG_KT` | At or above this, a northerly or onshore-ish wind is the top phrase. Default 18. Must sit above `CHOP_LIGHT_KT`. |
+
+There is no Admiralty, WorldTides, or Surfers Against Sewage key in this repo. Do not invent one.
+
+## What the glance page is doing
+
+The home sheet is one column: a narrow column on a phone, a wider one on a desktop, still not a multi-panel dashboard. The section clip sits at the top, flush, with the mode and how long it lasts directly under it (tide, air, and wind on that same block, and a plain “Walpole Bay · today · now” line). Then water choppiness, today’s tide curve, a sewage line, approved notes, and a short sources footnote. It is **today in Europe/London**. After midnight it draws the new day.
+
+The glance names **three modes** in text only. The section clip is the picture. Pool mode is the enclosed pool, walls showing (the internal “exposed” and “near the top” readings). Sea mode is the walls covered. Magic waterfall is the short window when a rising tide is coming over the wall. The line under the name is how long that mode still lasts on today’s curve. The older wall words stay in the model and on the desk; they are not the glance headline.
+
+Wind on that line is metres per second: the average of Open-Meteo’s hourly speeds over the last three hours (or “this hour” if only one of those hours has arrived), plus the current gust. Chop thresholds are still in knots.
+
+The pool-plan figure is gone. Annual bathing class, the wall-top and overflow heights, and the old “this hour measured” table are not on this column — the desk still holds the two heights, and About still explains the class. The section is one of Tom’s three tidal-cycle clips in `public/section/` (`pool.png`, `waterfall.png`, `sea.png`). Pool mode shows the pool clip, magic waterfall the overtopping clip, and sea mode the submerged wall. The clip follows the same tide-against-crest reading as the mode. The tide curve uses London clock times. The past part of the curve is grey; the forecast is blue; now is a black dot; the waterfall window is the coral band. Orange, blue, and coral stay the notebook colours around that clip.
+
+**Water choppiness** is a provisional pilot, not a forecast and not a zone map. It uses the Open-Meteo wind at the pool pin (knots = mph × 0.868976) and five phrases: still as bathwater, the odd splash, you gonna be spitting water, face splashin a plenty, and wave machine at Center Parks is on. The current one is circled. Below half of `CHOP_LIGHT_KT` (default 10) is bathwater; up to light is the odd splash; up to the midpoint with `CHOP_STRONG_KT` (default 18) is spitting; up to strong, or a strong wind that is not onshore, is face splashin; a strong onshore wind — N, NNE, NE, ENE, NW, NNW, WNW — is the wave machine. S, SSE, SSW, SW, and WSW step the result down one, because the cliff along the south shelters the pool and northerlies hit it. The caption is only which way the wind is working. The water-quality lines lead with warnings, then days since the last genuine release on Rivers and Seas Watch. If that history has no date, the line says so. It does not turn the 72-hour flag into a day count.
+
+**Wall reading** (provisional, not a score):
+
+- Walls exposed — tide comfortably below the overflow
+- Water near top — inside the approach band, or over the lip outside the short window
+- Magic waterfall time — about 15 minutes after a *rising* tide crosses the overflow, while the wall top is still showing
+- Walls covered — prediction at or above the wall top
+
+Historic England's list description (Kent HER [DKE22446](https://heritage.kent.gov.uk/Designation/DKE22446/)) says the seaward wall is about seven feet above the chalk, with overflows six inches below the top, and that the wall was set so the pool is submerged at every tide. Those figures are relative to the chalk floor, **not Chart Datum**.
+
+The database is seeded with placeholders:
+
+- `wallTopMetresCD` = 4.00
+- `overflowMetresCD` = 3.85 (six inches, 0.15 m, below the placeholder top)
+
+A keeper edits them on the desk. `waveAllowanceMetres` is a stub added to the predicted height before the comparison. It defaults to 0 and is not a wave model.
+
+Approved observation notes do **not** move the live reading. They are a learning set: each new note stores the forecast height and state at the moment it was filed, next to what the person saw. Calibration is comparing those over time, then editing the two heights by hand.
+
+## Data sources
+
+**Tides.** UKHO ADMIRALTY [EasyTide](https://easytide.admiralty.co.uk/) for Margate, station `0103`, about 1.8 km from the pool pin (51.39292°N, 1.40422°E). The app reads the public JSON the EasyTide website uses (`/Home/GetPredictionData?stationId=0103`). No key. This is a free leisure feed, not a supported API contract. If it fails, the wall reading is withheld rather than invented, and any earlier cache is labelled stale. Cached about six hours.
+
+The official programmatic alternative is the [Admiralty Tidal API](https://www.admiralty.co.uk/access-data/apis). The Discovery tier can be free for high and low waters and needs a key you obtain yourself. Paid tiers add interval heights. This build does not call it.
+
+**Weather.** [Open-Meteo](https://open-meteo.com/) at the pool coordinates. No key. Cached about three hours. It is a model, not an anemometer on the promenade. Credit: weather data by Open-Meteo.com.
+
+**Bathing water.** Environment Agency / Swimfo profile for Walpole Bay, Margate, eubwid `ukj4210-12630`: [profile](https://environment.data.gov.uk/bwq/profiles/profile.html?site=ukj4210-12630). The app tries the EA JSON first. Some networks get HTTP 403 from that host. When that happens the annual class falls back to the figure Southern Water publishes for the same bathing water, and the page says so. It will not invent a classification. The class is an annual rating, not this morning's sample. The monitored season is 1 May–30 September.
+
+**Sewage.** Thanet wastewater is **Southern Water** (named on the bathing-water record as Southern Water Services Limited). Near-real-time status comes from their public [Rivers and Seas Watch](https://riversandseaswatch.southernwater.co.uk/) feature service, bathing site `WALPOLE BAY MARGATE`. A release marked in the last 24 or 72 hours raises the banner. Cached about 20 minutes.
+
+[Surfers Against Sewage Safer Seas & Rivers](https://www.sas.org.uk/water-quality/sewage-pollution-alerts/safer-seas-rivers-service/) does not offer a keyless public API this app can call, so SAS is a link-out only. Southern Water also left the shared Water UK ArcGIS storm-overflow pattern in 2026; the Rivers and Seas Watch layer is the feed that actually covers this beach.
+
+The keeper can force the warning on, or suppress the automatic banner. A suppression is still mentioned on the sheet.
+
+## Notes, desk, export
+
+`/observe` is an anonymous structured form. Required for calibration: wall state, roughly when, where in the pool (landward / middle / seaward), overall feel. Temperature, wind, clarity, crowd, wildlife, and “would you swim again?” are optional fixed lists. No free text, no photos, no accounts.
+
+Submissions land as `pending`. The desk at `/admin` approves or rejects them. Only approved notes appear on the glance page. Two approved demo notes and one pending demo note are seeded and marked “demo plate”.
+
+CSV of every row, including rejected and the forecast snapshot: the desk’s “Download the spreadsheet” link (`/api/admin/export`), while the cookie is valid. Retention is indefinite; there are no photos.
+
+## Offline
+
+The app is an installable PWA (`public/manifest.webmanifest`). A small service worker caches the last successful glance page and `/api/conditions`, plus icons. At the beach with no signal you should see the last sheet, not a blank error. It does not queue a note for later, and it does not send push alerts. Admin pages are not cached.
+
+## Later
+
+Wind, tide, and warmth do not feel the same at the landward end, the middle, and the seaward wall. A later version could model those zones from the approved notes. Also out of scope here: a go/no-go score, more than one site, photos, open text, reporter accounts, push alerts, and a surveyed wall datum.
