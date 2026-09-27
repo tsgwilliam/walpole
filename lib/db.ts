@@ -11,6 +11,10 @@ type SqliteDatabase = {
   };
 };
 
+type SqliteModule = {
+  DatabaseSync: new (path: string) => SqliteDatabase;
+};
+
 type Row = Record<string, unknown>;
 
 type Statement = {
@@ -26,7 +30,7 @@ export type Db = {
 
 const globalDb = globalThis as unknown as { __walpoleDb?: Db };
 
-function wrap(db: DatabaseSync): Db {
+function wrap(db: SqliteDatabase): Db {
   return {
     exec: (sql) => db.exec(sql),
     prepare: (sql) => {
@@ -45,7 +49,7 @@ function wrap(db: DatabaseSync): Db {
           return { ...(row as Row) };
         },
         all: (...params) =>
-          stmt.all(...params).map((row) => ({ ...(row as Row) })),
+          stmt.all(...params).map((row: unknown) => ({ ...(row as Row) })),
       };
     },
   };
@@ -171,21 +175,25 @@ function seedObservations(db: Db) {
   );
 }
 
+function openSqlite(file: string): SqliteDatabase {
+  const getBuiltin = (process as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
+  if (typeof getBuiltin !== "function") {
+    throw new Error("This app needs Node.js 22, which provides the built-in SQLite module.");
+  }
+  const loaded = getBuiltin("node:" + "sqlite") as Partial<SqliteModule> | undefined;
+  const DatabaseSync = loaded?.DatabaseSync;
+  if (!DatabaseSync) {
+    throw new Error("This app needs Node.js 22, which provides the built-in SQLite module.");
+  }
+  return new DatabaseSync(file);
+}
+
 export function getDb(): Db {
   if (globalDb.__walpoleDb) return globalDb.__walpoleDb;
   const dir = path.join(process.cwd(), "data");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "walpole.sqlite");
-  const getBuiltin = (
-    process as NodeJS.Process & {
-      getBuiltinModule?: (id: string) => { DatabaseSync: new (p: string) => SqliteDatabase };
-    }
-  ).getBuiltinModule;
-  if (!getBuiltin) {
-    throw new Error("This app needs Node.js 22, which provides the built-in SQLite module.");
-  }
-  const { DatabaseSync } = getBuiltin("node:" + "sqlite");
-  const sqlite = new DatabaseSync(file);
+  const sqlite = openSqlite(file);
   const db = wrap(sqlite);
   db.exec("PRAGMA journal_mode = WAL;");
   migrate(db);
