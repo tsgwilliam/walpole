@@ -44,54 +44,60 @@ function poolInteriorPath(corners: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint
   return `${pathOf([nw, ne, se, sw])} Z`;
 }
 
-type SpeedLabelPlacement = { x: number; y: number; anchor: "start" | "end" | "middle"; width: number };
+type SpeedLabelPlacement = { x: number; y: number; anchor: "middle"; width: number };
 
-function speedLabelOutside(
+const POOL_STROKE_CLEAR = 8;
+function pointInPlanPool(point: PlanPoint, poly: PlanPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x;
+    const yi = poly[i].y;
+    const xj = poly[j].x;
+    const yj = poly[j].y;
+    const intersect =
+      yi > point.y !== yj > point.y && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi + 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function speedLabelRect(box: SpeedLabelPlacement): { left: number; right: number; top: number; bottom: number } {
+  const left = box.x - box.width / 2;
+  return { left, right: left + box.width, top: box.y - 12, bottom: box.y + 4 };
+}
+
+function speedLabelOutsidePool(
   bounds: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint; sw: PlanPoint },
-  mid: PlanPoint,
   text: string,
 ): SpeedLabelPlacement {
-  const gap = 10;
   const width = Math.max(58, text.length * 6.4 + 14);
-  const minX = Math.min(bounds.nw.x, bounds.sw.x);
-  const maxX = Math.max(bounds.ne.x, bounds.se.x);
-  const minY = Math.min(bounds.nw.y, bounds.ne.y);
-  const maxY = Math.max(bounds.se.y, bounds.sw.y);
-  const marginL = PAD.l;
-  const marginR = VIEW_W - PAD.r;
+  const poly = [bounds.nw, bounds.ne, bounds.se, bounds.sw];
+  const southY = Math.max(bounds.sw.y, bounds.se.y);
+  const box: SpeedLabelPlacement = { x: VIEW_W / 2, y: southY + POOL_STROKE_CLEAR + 12, anchor: "middle", width };
 
-  const labelSpan = (box: SpeedLabelPlacement): { left: number; right: number; top: number; bottom: number } => {
-    const left =
-      box.anchor === "start" ? box.x - 6 : box.anchor === "end" ? box.x - box.width + 6 : box.x - box.width / 2;
-    return { left, right: left + box.width, top: box.y - 12, bottom: box.y + 4 };
+  const clear = (rect: { left: number; right: number; top: number; bottom: number }): boolean => {
+    if (rect.top < southY + POOL_STROKE_CLEAR) return false;
+    const corners: PlanPoint[] = [
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.top },
+      { x: rect.left, y: rect.bottom },
+      { x: rect.right, y: rect.bottom },
+      { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 },
+    ];
+    return corners.every((p) => !pointInPlanPool(p, poly));
   };
 
-  const clearOfPool = (span: { left: number; right: number; top: number; bottom: number }): boolean => {
-    const poolPad = gap - 2;
-    const overlaps =
-      span.right > minX - poolPad &&
-      span.left < maxX + poolPad &&
-      span.bottom > minY - poolPad &&
-      span.top < maxY + poolPad;
-    return !overlaps;
-  };
-
-  const inView = (span: { left: number; right: number; top: number; bottom: number }): boolean =>
-    span.left >= marginL && span.right <= marginR && span.top >= PAD.t && span.bottom <= VIEW_H - PAD.b;
-
-  const candidates: SpeedLabelPlacement[] = [
-    { x: maxX + gap, y: mid.y + 4, anchor: "start", width },
-    { x: minX - gap, y: mid.y + 4, anchor: "end", width },
-    { x: VIEW_W / 2, y: maxY + gap + 12, anchor: "middle", width },
-    { x: VIEW_W / 2, y: minY - gap - 4, anchor: "middle", width },
-  ];
-
-  for (const box of candidates) {
-    const span = labelSpan(box);
-    if (inView(span) && clearOfPool(span)) return box;
+  let rect = speedLabelRect(box);
+  while (!clear(rect) && box.y < VIEW_H - 6) {
+    box.y += 2;
+    rect = speedLabelRect(box);
   }
+  return box;
+}
 
-  return { x: VIEW_W / 2, y: Math.min(maxY + gap + 12, VIEW_H - PAD.b - 10), anchor: "middle", width };
+function planBeachLabelY(bounds: { sw: PlanPoint; se: PlanPoint }): number {
+  const southY = Math.max(bounds.sw.y, bounds.se.y);
+  return southY + 28;
 }
 
 function WindGlyph({
@@ -116,9 +122,8 @@ function WindGlyph({
   const showGust = gust > mean + 0.5;
   const speedLabel = gustMs != null && gustMs > avgMs + 0.05 ? `${avgMs.toFixed(1)} · ${gustMs.toFixed(1)}` : avgMs.toFixed(1);
   const caption = `${speedLabel} m/s`;
-  const box = speedLabelOutside(bounds, at, caption);
-  const rectX =
-    box.anchor === "start" ? box.x - 6 : box.anchor === "end" ? box.x - box.width + 6 : box.x - box.width / 2;
+  const box = speedLabelOutsidePool(bounds, caption);
+  const rectX = box.x - box.width / 2;
   return (
     <>
       <g
@@ -340,7 +345,15 @@ function PlanDrawing({
         opacity={submerged ? 0.5 : 1}
       />
       <path d={`M ${label(sw)} L ${label(se)}`} fill="none" stroke={INK} strokeWidth="1" opacity="0.65" />
-      <text x={VIEW_W / 2} y={sw.y + 22} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT} letterSpacing="0.14em">
+      <text
+        x={VIEW_W / 2}
+        y={planBeachLabelY({ sw, se })}
+        textAnchor="middle"
+        fill={INK}
+        fontSize="13"
+        fontFamily={FONT}
+        letterSpacing="0.14em"
+      >
         Beach
       </text>
       {travel != null && avgMs != null ? (
