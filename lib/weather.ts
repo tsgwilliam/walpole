@@ -1,5 +1,6 @@
 import { LINKS, POOL } from "./constants";
 import { loadCached } from "./cache";
+import { compassFromDegrees } from "./compass";
 import { londonDayKey } from "./time";
 
 export type WeatherBundle = {
@@ -20,35 +21,22 @@ export type WeatherBundle = {
   waveHeightM: number | null;
   wavePeriodS: number | null;
   waveDirectionDeg: number | null;
-  hourly: { t: string; tempC: number; rainMm: number; pop: number | null; windMph: number }[];
+  hourly: {
+    t: string;
+    tempC: number;
+    rainMm: number;
+    pop: number | null;
+    windMph: number;
+    windGustMph: number | null;
+    windDirectionDeg: number | null;
+  }[];
+  /** Marine hourly at the pin. Empty when that feed does not answer. */
+  waveHourly: { t: string; waveHeightM: number | null; wavePeriodS: number | null }[];
 };
 
 const THREE_HOURS = 3 * 60 * 60 * 1000;
 
-const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
-const COMPASS_WORD = [
-  "north",
-  "north-northeast",
-  "northeast",
-  "east-northeast",
-  "east",
-  "east-southeast",
-  "southeast",
-  "south-southeast",
-  "south",
-  "south-southwest",
-  "southwest",
-  "west-southwest",
-  "west",
-  "west-northwest",
-  "northwest",
-  "north-northwest",
-];
-
-export function compassFromDegrees(deg: number): { short: string; word: string } {
-  const i = Math.round(((deg % 360) + 360) % 360 / 22.5) % 16;
-  return { short: COMPASS[i], word: COMPASS_WORD[i] };
-}
+export { compassFromDegrees } from "./compass";
 
 export function weatherSummary(code: number): string {
   if (code === 0) return "Clear";
@@ -82,19 +70,28 @@ type Raw = {
     precipitation_probability?: (number | null)[];
     rain?: number[];
     wind_speed_10m?: number[];
+    wind_gusts_10m?: (number | null)[];
+    wind_direction_10m?: (number | null)[];
   };
 };
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 async function fetchWave(): Promise<{
-  waveHeightM: number;
+  waveHeightM: number | null;
   wavePeriodS: number | null;
   waveDirectionDeg: number | null;
+  hourly: { t: string; waveHeightM: number | null; wavePeriodS: number | null }[];
 } | null> {
   try {
     const url = new URL("https://marine-api.open-meteo.com/v1/marine");
     url.searchParams.set("latitude", String(POOL.latitude));
     url.searchParams.set("longitude", String(POOL.longitude));
     url.searchParams.set("current", "wave_height,wave_period,wave_direction");
+    url.searchParams.set("hourly", "wave_height,wave_period");
+    url.searchParams.set("forecast_days", "3");
     url.searchParams.set("cell_selection", "sea");
     url.searchParams.set("timezone", "Europe/London");
     const response = await fetch(url, {
@@ -105,22 +102,30 @@ async function fetchWave(): Promise<{
     if (!response.ok) return null;
     const raw = (await response.json()) as {
       current?: { wave_height?: number; wave_period?: number; wave_direction?: number };
+      hourly?: { time?: string[]; wave_height?: (number | null)[]; wave_period?: (number | null)[] };
     };
-    const height = raw.current?.wave_height;
-    if (typeof height !== "number" || !Number.isFinite(height)) return null;
-    const period = raw.current?.wave_period;
-    const direction = raw.current?.wave_direction;
+    const times = raw.hourly?.time ?? [];
+    const hourly = times.map((t, i) => ({
+      t,
+      waveHeightM: finiteOrNull(raw.hourly?.wave_height?.[i]),
+      wavePeriodS: finiteOrNull(raw.hourly?.wave_period?.[i]),
+    }));
+    const height = finiteOrNull(raw.current?.wave_height);
+    if (height == null && hourly.every((hour) => hour.waveHeightM == null)) return null;
     return {
       waveHeightM: height,
-      wavePeriodS: typeof period === "number" && Number.isFinite(period) ? period : null,
-      waveDirectionDeg: typeof direction === "number" && Number.isFinite(direction) ? direction : null,
+      wavePeriodS: finiteOrNull(raw.current?.wave_period),
+      waveDirectionDeg: finiteOrNull(raw.current?.wave_direction),
+      hourly,
     };
   } catch {
     return null;
   }
 }
 
-async function fetchForecast(): Promise<Omit<WeatherBundle, "waveHeightM" | "wavePeriodS" | "waveDirectionDeg">> {
+async function fetchForecast(): Promise<
+  Omit<WeatherBundle, "waveHeightM" | "wavePeriodS" | "waveDirectionDeg" | "waveHourly">
+> {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(POOL.latitude));
   url.searchParams.set("longitude", String(POOL.longitude));
@@ -130,10 +135,10 @@ async function fetchForecast(): Promise<Omit<WeatherBundle, "waveHeightM" | "wav
   );
   url.searchParams.set(
     "hourly",
-    "temperature_2m,precipitation_probability,rain,wind_speed_10m",
+    "temperature_2m,precipitation_probability,rain,wind_speed_10m,wind_gusts_10m,wind_direction_10m",
   );
   url.searchParams.set("timezone", "Europe/London");
-  url.searchParams.set("forecast_days", "2");
+  url.searchParams.set("forecast_days", "3");
   url.searchParams.set("wind_speed_unit", "mph");
   const response = await fetch(url, {
     headers: { Accept: "application/json", "User-Agent": "WalpoleBayConditions/0.1" },
@@ -154,6 +159,8 @@ async function fetchForecast(): Promise<Omit<WeatherBundle, "waveHeightM" | "wav
     rainMm: raw.hourly?.rain?.[i] ?? 0,
     pop: raw.hourly?.precipitation_probability?.[i] ?? null,
     windMph: raw.hourly?.wind_speed_10m?.[i] ?? NaN,
+    windGustMph: finiteOrNull(raw.hourly?.wind_gusts_10m?.[i]),
+    windDirectionDeg: finiteOrNull(raw.hourly?.wind_direction_10m?.[i]),
   }));
   const todayHours = hourly.filter((h) => h.t.startsWith(today));
   const todayRainMm = todayHours.reduce((sum, h) => sum + (Number.isFinite(h.rainMm) ? h.rainMm : 0), 0);
@@ -185,11 +192,12 @@ async function fetchWeather(): Promise<WeatherBundle> {
     waveHeightM: wave?.waveHeightM ?? null,
     wavePeriodS: wave?.wavePeriodS ?? null,
     waveDirectionDeg: wave?.waveDirectionDeg ?? null,
+    waveHourly: wave?.hourly ?? [],
   };
 }
 
 export async function getWeather(fresh: boolean) {
-  return loadCached("weather-pool", THREE_HOURS, fresh, fetchWeather);
+  return loadCached("weather-pool-v2", THREE_HOURS, fresh, fetchWeather);
 }
 
 export const WEATHER_SOURCE = {

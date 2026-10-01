@@ -76,6 +76,23 @@ export function formatLondonTime(instant: Date): string {
   return `${p.hour}:${p.minute}`;
 }
 
+/** Clock label for the glance slider. `atMs === nowMs` is the live sheet. */
+export function scrubTimeLabel(atMs: number, nowMs: number): string {
+  const at = new Date(atMs);
+  const now = new Date(nowMs);
+  const clock = formatLondonTime(at);
+  if (atMs === nowMs) return `Now · ${clock}`;
+  const atKey = londonDayKey(at);
+  if (atKey === londonDayKey(now)) return `Today · ${clock}`;
+  const tomorrowKey = londonDayKey(new Date(londonDayBounds(now).end.getTime() + 60_000));
+  if (atKey === tomorrowKey) return `Tomorrow · ${clock}`;
+  const weekday = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "short",
+  }).format(at);
+  return `${weekday} · ${clock}`;
+}
+
 export function formatLondonDate(instant: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",

@@ -101,3 +101,19 @@ export function classifyChop(input: {
 export function chopLabel(level: ChopLevel): string {
   return CHOP_LEVELS[level - 1].label;
 }
+
+/**
+ * Cliff along the south. Same direction sets as the chop pilot.
+ * Cross-shore directions are left unknown rather than given a made-up shelter.
+ */
+export function cliffTemperLine(compass: string | null | undefined): string {
+  const c = (compass || "").toUpperCase();
+  if (!c) return "Cliff tempering unknown.";
+  if (SHELTER.has(c)) {
+    return "Southerly — the cliff usually takes some of this. A direction guess, not a measurement.";
+  }
+  if (ONSHORE.has(c)) {
+    return "Off the sea — the cliff is little help. A direction guess, not a measurement.";
+  }
+  return "Cliff tempering unknown for this direction.";
+}

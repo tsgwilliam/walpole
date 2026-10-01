@@ -4,7 +4,8 @@ import { getWeather, WEATHER_SOURCE, type WeatherBundle } from "./weather";
 import { getEaQuality, getSewage, WATER_LINKS, type QualityBundle, type SewageBundle } from "./water";
 import { buildWallReading, settingsAreUsable, STATE_LABEL, type WallReading, type WallStateId } from "./wall-state";
 import { BATHING, LINKS, POOL, TIDE_STATION } from "./constants";
-import { londonDayBounds, londonDayKey } from "./time";
+import { selectGlanceTide } from "./tide-glance";
+import { londonDayBounds } from "./time";
 import type { PollutionOverride } from "./db";
 
 export type PublicNote = {
@@ -221,15 +222,14 @@ export async function getConditions(options: { fresh?: boolean } = {}): Promise<
     tideError =
       "Margate predictions did not load, so the wall reading is left blank. A missing number is better than a made-up one.";
   } else {
-    const dayPoints = tideLoaded.data.points.filter((p) => londonDayKey(new Date(p.t)) === bounds.key);
-    const dayEvents = tideLoaded.data.events.filter((e) => londonDayKey(new Date(e.t)) === bounds.key);
+    const span = selectGlanceTide(tideLoaded.data.points, tideLoaded.data.events, now);
     tide = {
       fetchedAt: tideLoaded.fetchedAt,
       stale: tideLoaded.stale,
       sourceName: TIDE_SOURCE.name,
       sourceUrl: TIDE_SOURCE.url,
-      points: dayPoints,
-      events: dayEvents,
+      points: span.points,
+      events: span.events,
       dayKey: bounds.key,
     };
     const problem = settingsAreUsable(settings);

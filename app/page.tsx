@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Glance } from "@/components/glance";
 import { Shell } from "@/components/shell";
 import { getConditions } from "@/lib/conditions";
+import { parseAtOffsetMinutes } from "@/lib/glance-at";
 import { parsePictureMode } from "@/lib/section-scene";
 
 export const dynamic = "force-dynamic";
@@ -13,14 +14,15 @@ export const metadata: Metadata = {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ fresh?: string; mode?: string }>;
+  searchParams: Promise<{ fresh?: string; mode?: string; at?: string }>;
 }) {
   const params = await searchParams;
   const sheet = await getConditions({ fresh: params.fresh === "1" });
   const sectionMode = parsePictureMode(params.mode);
+  const initialMinutes = parseAtOffsetMinutes(params.at, new Date(sheet.generatedAt));
   return (
     <Shell active="glance">
-      <Glance sheet={sheet} sectionMode={sectionMode} />
+      <Glance sheet={sheet} sectionMode={sectionMode} initialMinutes={initialMinutes} />
     </Shell>
   );
 }

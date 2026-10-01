@@ -10,14 +10,12 @@ export type WindSample = { t: number; windMph: number };
  * three hours (one value an hour — that is the period the feed gives).
  * Gust is the current gust, converted from the same feed.
  */
-export function windGlanceLine(input: {
-  compass: string;
+export function windGlanceParts(input: {
   windMph: number;
   windGustMph: number | null;
   hourly: WindSample[];
   nowIso: string;
-  stale?: boolean;
-}): string {
+}): { avgMs: string; period: string; gustMs: string | null } {
   const now = Date.parse(input.nowIso);
   const recent = input.hourly.filter((sample) => {
     if (!Number.isFinite(sample.windMph)) return false;
@@ -26,12 +24,36 @@ export function windGlanceLine(input: {
   const avgMph = recent.length
     ? recent.reduce((sum, sample) => sum + sample.windMph, 0) / recent.length
     : input.windMph;
-  const avg = (avgMph * MPH_TO_MS).toFixed(1);
-  const period = recent.length <= 1 ? "this hour" : `${recent.length}-hour avg`;
-  const gust =
+  const gustMs =
     input.windGustMph != null && Number.isFinite(input.windGustMph)
-      ? ` · gust ${(input.windGustMph * MPH_TO_MS).toFixed(1)} m/s`
-      : "";
+      ? (input.windGustMph * MPH_TO_MS).toFixed(1)
+      : null;
+  return {
+    avgMs: (avgMph * MPH_TO_MS).toFixed(1),
+    period: recent.length <= 1 ? "this hour" : `${recent.length}-hour avg`,
+    gustMs,
+  };
+}
+
+/** Spoken form of the period token from `windGlanceParts`. */
+export function windPeriodPhrase(period: string): string {
+  if (period === "this hour") return "this hour";
+  const match = /^(\d+)-hour avg$/.exec(period);
+  if (!match) return period;
+  const n = Number(match[1]);
+  return `${n}-hour average`;
+}
+
+export function windGlanceLine(input: {
+  compass: string;
+  windMph: number;
+  windGustMph: number | null;
+  hourly: WindSample[];
+  nowIso: string;
+  stale?: boolean;
+}): string {
+  const parts = windGlanceParts(input);
+  const gust = parts.gustMs ? ` · gust ${parts.gustMs} m/s` : "";
   const saved = input.stale ? " · saved" : "";
-  return `${input.compass} · ${avg} m/s ${period}${gust}${saved}`;
+  return `${input.compass} · ${parts.avgMs} m/s ${parts.period}${gust}${saved}`;
 }
