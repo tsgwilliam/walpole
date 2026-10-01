@@ -38,7 +38,14 @@ export function roughnessAt(
   return base;
 }
 
-/** Wavy ink along one line in screen space (used inside a rotated group). */
+/** Plan ink strength from mean wind (m/s). Keeps calm days soft, ≥8 m/s clearly wavy. */
+export function planWindRoughBoost(meanMs: number): number {
+  const ms = Number.isFinite(meanMs) ? Math.max(0, meanMs) : 0;
+  if (ms < 4) return 0;
+  if (ms < 8) return (ms - 4) * 0.04;
+  return 0.16 + Math.min(0.35, (ms - 8) * 0.028);
+}
+
 export function waveScanline(
   x0: number,
   x1: number,
@@ -47,7 +54,7 @@ export function waveScanline(
   phase: number,
   step: number,
 ): string {
-  if (x1 - x0 < 4 || amp < 0.35) return "";
+  if (x1 - x0 < 4 || amp < 0.2) return "";
   let d = "";
   let i = 0;
   for (let x = x0; x <= x1; x += step) {

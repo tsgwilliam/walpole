@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChopLevel } from "@/lib/chop";
 import { downwindDegrees } from "@/lib/compass";
 import type { WindFrame } from "@/lib/glance-at";
-import { chopRoughness, roughnessAt, waveScanline } from "@/lib/plan-roughness";
+import { chopRoughness, planWindRoughBoost, roughnessAt, waveScanline } from "@/lib/plan-roughness";
 import {
   planLayout,
   planProject,
@@ -44,16 +44,68 @@ function poolInteriorPath(corners: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint
   return `${pathOf([nw, ne, se, sw])} Z`;
 }
 
+type SpeedLabelPlacement = { x: number; y: number; anchor: "start" | "end" | "middle"; width: number };
+
+function speedLabelOutside(
+  bounds: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint; sw: PlanPoint },
+  mid: PlanPoint,
+  text: string,
+): SpeedLabelPlacement {
+  const gap = 10;
+  const width = Math.max(58, text.length * 6.4 + 14);
+  const minX = Math.min(bounds.nw.x, bounds.sw.x);
+  const maxX = Math.max(bounds.ne.x, bounds.se.x);
+  const minY = Math.min(bounds.nw.y, bounds.ne.y);
+  const maxY = Math.max(bounds.se.y, bounds.sw.y);
+  const marginL = PAD.l;
+  const marginR = VIEW_W - PAD.r;
+
+  const labelSpan = (box: SpeedLabelPlacement): { left: number; right: number; top: number; bottom: number } => {
+    const left =
+      box.anchor === "start" ? box.x - 6 : box.anchor === "end" ? box.x - box.width + 6 : box.x - box.width / 2;
+    return { left, right: left + box.width, top: box.y - 12, bottom: box.y + 4 };
+  };
+
+  const clearOfPool = (span: { left: number; right: number; top: number; bottom: number }): boolean => {
+    const poolPad = gap - 2;
+    const overlaps =
+      span.right > minX - poolPad &&
+      span.left < maxX + poolPad &&
+      span.bottom > minY - poolPad &&
+      span.top < maxY + poolPad;
+    return !overlaps;
+  };
+
+  const inView = (span: { left: number; right: number; top: number; bottom: number }): boolean =>
+    span.left >= marginL && span.right <= marginR && span.top >= PAD.t && span.bottom <= VIEW_H - PAD.b;
+
+  const candidates: SpeedLabelPlacement[] = [
+    { x: maxX + gap, y: mid.y + 4, anchor: "start", width },
+    { x: minX - gap, y: mid.y + 4, anchor: "end", width },
+    { x: VIEW_W / 2, y: maxY + gap + 12, anchor: "middle", width },
+    { x: VIEW_W / 2, y: minY - gap - 4, anchor: "middle", width },
+  ];
+
+  for (const box of candidates) {
+    const span = labelSpan(box);
+    if (inView(span) && clearOfPool(span)) return box;
+  }
+
+  return { x: VIEW_W / 2, y: Math.min(maxY + gap + 12, VIEW_H - PAD.b - 10), anchor: "middle", width };
+}
+
 function WindGlyph({
   at,
   travel,
   avgMs,
   gustMs,
+  bounds,
 }: {
   at: PlanPoint;
   travel: number;
   avgMs: number;
   gustMs: number | null;
+  bounds: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint; sw: PlanPoint };
 }) {
   const mark = windGlyphMark(avgMs, gustMs);
   const { mean, gust, meanWidth, gustWidth, head, meanColour, gustColour } = mark;
@@ -63,12 +115,10 @@ function WindGlyph({
   const wing = head * 0.68;
   const showGust = gust > mean + 0.5;
   const speedLabel = gustMs != null && gustMs > avgMs + 0.05 ? `${avgMs.toFixed(1)} · ${gustMs.toFixed(1)}` : avgMs.toFixed(1);
-  const rad = (travel * Math.PI) / 180;
-  const cross = rad + Math.PI / 2;
-  const side = 20 + mean * 0.42;
-  const labelX = at.x + Math.sin(cross) * side;
-  const labelY = at.y - Math.cos(cross) * side;
-  const anchor = Math.sin(cross) >= 0 ? "start" : "end";
+  const caption = `${speedLabel} m/s`;
+  const box = speedLabelOutside(bounds, at, caption);
+  const rectX =
+    box.anchor === "start" ? box.x - 6 : box.anchor === "end" ? box.x - box.width + 6 : box.x - box.width / 2;
   return (
     <>
       <g
@@ -95,20 +145,21 @@ function WindGlyph({
         <line x1={0} y1={tail} x2={0} y2={tip + head * 0.55} stroke={meanColour} strokeWidth={meanWidth} strokeLinecap="round" />
         <path d={`M 0 ${tip.toFixed(1)} L ${(-wing).toFixed(1)} ${(tip + head).toFixed(1)} H ${wing.toFixed(1)} Z`} fill={meanColour} />
       </g>
-      <text
-        className="wind-speed-label"
-        x={labelX}
-        y={labelY}
-        textAnchor={anchor}
-        fill={meanColour}
-        fontSize="11"
-        fontFamily={FONT}
-        stroke={PAPER}
-        strokeWidth="3"
-        paintOrder="stroke"
-      >
-        {speedLabel} m/s
-      </text>
+      <g className="wind-speed-label" data-outside-pool="true">
+        <rect
+          x={rectX}
+          y={box.y - 12}
+          width={box.width}
+          height={16}
+          fill={PAPER}
+          stroke={INK}
+          strokeWidth={0.65}
+          opacity={0.97}
+        />
+        <text x={box.x} y={box.y} textAnchor={box.anchor} fill={meanColour} fontSize="11" fontFamily={FONT}>
+          {caption}
+        </text>
+      </g>
     </>
   );
 }
@@ -135,15 +186,18 @@ function RoughnessField({
   phase,
   travel,
   mid,
+  meanMs,
 }: {
   chopLevel: ChopLevel;
   zone: QuietZone | null;
   phase: number;
   travel: number;
   mid: PlanPoint;
+  meanMs: number | null;
 }) {
   const lines = useMemo(() => {
-    const rows: { d: string; opacity: number }[] = [];
+    const rows: { d: string; opacity: number; width: number }[] = [];
+    const windBoost = planWindRoughBoost(meanMs ?? 0);
     const layout = planLayout(VIEW_W, VIEW_H, PAD);
     const corners = poolPlanCorners();
     const nw = planProject(corners.nw, layout);
@@ -163,24 +217,31 @@ function RoughnessField({
       Math.hypot(se.x - mid.x, se.y - mid.y),
       Math.hypot(sw.x - mid.x, sw.y - mid.y),
     );
-    const half = reach * 1.45;
-    const stepY = 5;
-    const stepX = 6;
+    const half = reach * 2.35;
+    const stepY = 3;
+    const stepX = 4;
 
     for (let ly = -half; ly <= half; ly += stepY) {
       let rough = 0;
       for (let lx = -half; lx <= half; lx += stepX) {
-        rough = Math.max(rough, roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough));
+        const sample = roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough);
+        rough = Math.max(rough, sample + windBoost * (1 - sample * 0.35));
       }
-      if (rough < 0.08) continue;
-      const amp = 0.6 + rough * 2.4;
+      if (rough < 0.05) continue;
+      const amp = (0.85 + rough * 3.1) * (1 + windBoost * 0.5);
       const drift = phase + ly * 0.05;
-      const d = waveScanline(-half, half, ly, amp, drift, 4 + rough * 2.5);
-      if (d) rows.push({ d, opacity: 0.12 + rough * 0.55 });
+      const d = waveScanline(-half, half, ly, amp, drift, 3 + rough * 2);
+      if (d) {
+        rows.push({
+          d,
+          opacity: Math.min(0.92, 0.3 + rough * 0.62),
+          width: 0.9 + rough * 0.75,
+        });
+      }
     }
 
     return rows;
-  }, [chopLevel, zone, phase, travel, mid]);
+  }, [chopLevel, zone, phase, travel, mid, meanMs]);
 
   return (
     <g clipPath="url(#pool-clip)">
@@ -194,7 +255,7 @@ function RoughnessField({
       >
         {lines.map((row, i) =>
           row.d ? (
-            <path key={i} d={row.d} fill="none" stroke={INK} strokeWidth="0.85" opacity={row.opacity} />
+            <path key={i} d={row.d} fill="none" stroke={INK} strokeWidth={row.width} opacity={row.opacity} />
           ) : null,
         )}
       </g>
@@ -264,6 +325,7 @@ function PlanDrawing({
         phase={phase}
         travel={travel ?? 0}
         mid={mid}
+        meanMs={avgMs}
       />
       <path
         className="plan-wall"
@@ -282,7 +344,7 @@ function PlanDrawing({
         Beach
       </text>
       {travel != null && avgMs != null ? (
-        <WindGlyph at={mid} travel={travel} avgMs={avgMs} gustMs={gustMs} />
+        <WindGlyph at={mid} travel={travel} avgMs={avgMs} gustMs={gustMs} bounds={{ nw, ne, se, sw }} />
       ) : null}
     </svg>
   );
