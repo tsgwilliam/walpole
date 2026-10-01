@@ -38,7 +38,7 @@ export function roughnessAt(
   return base;
 }
 
-/** Wavy ink segment for one scanline inside the pool. */
+/** Wavy ink along one line in screen space (used inside a rotated group). */
 export function waveScanline(
   x0: number,
   x1: number,

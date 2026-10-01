@@ -99,14 +99,34 @@ function WindGlyph({
   );
 }
 
+function localToPlan(
+  lx: number,
+  ly: number,
+  mid: PlanPoint,
+  travelDeg: number,
+  layout: ReturnType<typeof planLayout>,
+): PlanPoint {
+  const rad = (travelDeg * Math.PI) / 180;
+  const sx = mid.x + lx * Math.cos(rad) + ly * Math.sin(rad);
+  const sy = mid.y - lx * Math.sin(rad) + ly * Math.cos(rad);
+  return {
+    x: (sx - layout.originX) / layout.scale,
+    y: (layout.originY - sy) / layout.scale,
+  };
+}
+
 function RoughnessField({
   chopLevel,
   zone,
   phase,
+  travel,
+  mid,
 }: {
   chopLevel: ChopLevel;
   zone: QuietZone | null;
   phase: number;
+  travel: number;
+  mid: PlanPoint;
 }) {
   const lines = useMemo(() => {
     const rows: { d: string; opacity: number }[] = [];
@@ -123,42 +143,38 @@ function RoughnessField({
           ? { whole: true, polygon: [] as PlanPoint[] }
           : { whole: false, polygon: zone.polygon };
 
-    const yTop = Math.min(nw.y, ne.y) + 8;
-    const yBot = Math.max(sw.y, se.y) - 6;
-    const xLeft = Math.min(nw.x, sw.x) + 4;
-    const xRight = Math.max(ne.x, se.x) - 4;
+    const span =
+      Math.max(
+        Math.hypot(ne.x - nw.x, ne.y - nw.y),
+        Math.hypot(se.x - sw.x, se.y - sw.y),
+        Math.hypot(ne.x - se.x, ne.y - se.y),
+      ) * 0.95;
+    const half = span / 2;
     const stepY = 7;
 
-    for (let y = yTop; y <= yBot; y += stepY) {
-      const mid = { x: (xLeft + xRight) / 2, y };
-      const rough = roughnessAt(
-        {
-          x: (mid.x - layout.originX) / layout.scale,
-          y: (layout.originY - mid.y) / layout.scale,
-        },
-        chopLevel,
-        quietForRough,
-      );
+    for (let ly = -half; ly <= half; ly += stepY) {
+      const sample = localToPlan(0, ly, mid, travel, layout);
+      const rough = roughnessAt(sample, chopLevel, quietForRough);
       if (rough < 0.08) continue;
       const amp = 0.6 + rough * 2.4;
-      const d = waveScanline(xLeft, xRight, y, amp, phase + y * 0.04, 5 + rough * 3);
+      const drift = phase + ly * 0.05;
+      const d = waveScanline(-half, half, ly, amp, drift, 5 + rough * 3);
       if (d) rows.push({ d, opacity: 0.12 + rough * 0.55 });
     }
 
-    if (zone?.whole && chopRoughness(chopLevel) > 0.05) {
-      const wash = chopRoughness(chopLevel) * 0.08;
-      rows.push({ d: "", opacity: wash });
-    }
-
     return rows;
-  }, [chopLevel, zone, phase]);
+  }, [chopLevel, zone, phase, travel, mid.x, mid.y]);
 
   return (
     <g clipPath="url(#pool-clip)">
       {zone?.whole && chopRoughness(chopLevel) <= 0.05 ? (
         <rect x={0} y={0} width={VIEW_W} height={VIEW_H} fill={INK} opacity={0.03} />
       ) : null}
-      <g className="plan-chop-lines">
+      <g
+        className="plan-chop-lines"
+        data-wind-travel={travel.toFixed(1)}
+        transform={`translate(${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) rotate(${travel.toFixed(2)})`}
+      >
         {lines.map((row, i) =>
           row.d ? (
             <path key={i} d={row.d} fill="none" stroke={INK} strokeWidth="0.85" opacity={row.opacity} />
@@ -225,7 +241,13 @@ function PlanDrawing({
           opacity={0.16}
         />
       ) : null}
-      <RoughnessField chopLevel={chopLevel} zone={zone} phase={phase} />
+      <RoughnessField
+        chopLevel={chopLevel}
+        zone={zone}
+        phase={phase}
+        travel={travel ?? 0}
+        mid={mid}
+      />
       <path
         className="plan-wall"
         data-wall={submerged ? "under" : "solid"}

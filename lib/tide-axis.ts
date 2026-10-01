@@ -1,25 +1,40 @@
-import { londonMinutes } from "./time";
-
-/** Scrubbed instant sits at this share of the plot width (London day, midnight–midnight). */
+/** Scrubbed instant sits at this share of the visible plot width. */
 export const TIDE_NOW_FRAC = 0.2;
 
-/** Map London civil minutes to 0–1 along the day axis, with `nowMin` at {@link TIDE_NOW_FRAC}. */
-export function tideDayFraction(minutes: number, nowMin: number): number {
-  const m = Math.max(0, Math.min(1440, minutes));
-  const now = Math.max(0, Math.min(1440, nowMin));
-  if (m <= now) {
-    if (now < 1) return TIDE_NOW_FRAC;
-    return (m / now) * TIDE_NOW_FRAC;
-  }
-  const after = 1440 - now;
-  if (after < 1) return TIDE_NOW_FRAC;
-  return TIDE_NOW_FRAC + ((m - now) / after) * (1 - TIDE_NOW_FRAC);
+const HOUR_MS = 60 * 60 * 1000;
+
+export type TideVisibleWindow = { startMs: number; endMs: number; spanMs: number };
+
+/**
+ * Linear time window: honest scale, no horizontal squash. `nowMs` sits at
+ * {@link TIDE_NOW_FRAC} from the left; enough past and future for the curve.
+ */
+export function tideVisibleWindow(
+  nowMs: number,
+  sampleMs: number[],
+  eventMs: number[],
+): TideVisibleWindow {
+  const minFuture = 22 * HOUR_MS;
+  const minPast = 6 * HOUR_MS;
+  let span = Math.max(minFuture / (1 - TIDE_NOW_FRAC), minPast / TIDE_NOW_FRAC);
+
+  const futureNeed = Math.max(minFuture, ...eventMs.filter((t) => t >= nowMs).map((t) => t - nowMs), 0);
+  const pastNeed = Math.max(minPast, ...sampleMs.filter((t) => t <= nowMs).map((t) => nowMs - t), 0);
+  span = Math.max(span, futureNeed / (1 - TIDE_NOW_FRAC), pastNeed / TIDE_NOW_FRAC);
+
+  const dataMax = sampleMs.length ? Math.max(...sampleMs) : nowMs + minFuture;
+  const dataMin = sampleMs.length ? Math.min(...sampleMs) : nowMs - minPast;
+  if (dataMax > nowMs) span = Math.max(span, (dataMax - nowMs) / (1 - TIDE_NOW_FRAC));
+  if (dataMin < nowMs) span = Math.max(span, (nowMs - dataMin) / TIDE_NOW_FRAC);
+
+  const startMs = nowMs - TIDE_NOW_FRAC * span;
+  const endMs = nowMs + (1 - TIDE_NOW_FRAC) * span;
+  return { startMs, endMs, spanMs: endMs - startMs };
 }
 
-export function tidePlotX(iso: string, nowIso: string, padL: number, innerW: number): number {
-  const nowMin = londonMinutes(new Date(nowIso));
-  const min = londonMinutes(new Date(iso));
-  return padL + tideDayFraction(min, nowMin) * innerW;
+export function tidePlotX(tMs: number, window: TideVisibleWindow, padL: number, innerW: number): number {
+  const u = (tMs - window.startMs) / window.spanMs;
+  return padL + Math.max(0, Math.min(1, u)) * innerW;
 }
 
 export function formatTideClock(iso: string): string {
