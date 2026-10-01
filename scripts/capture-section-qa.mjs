@@ -86,47 +86,51 @@ async function assertSeaWall(page) {
       const b = data[i + 2];
       return r > 210 && g > 205 && b > 190;
     };
-    let best = null;
+    const cols = [];
     for (let x = 2; x < width - 2; x++) {
       let run = 0;
       let y0 = 0;
+      let bestRun = 0;
+      let by0 = 0;
+      let by1 = 0;
       for (let y = 0; y < height; y++) {
         if (darkAt(x, y)) {
           if (run === 0) y0 = y;
           run += 1;
-        } else if (run > 0) {
-          if (!best || run > best.run) best = { x, y0, y1: y - 1, run };
-          run = 0;
-        }
+          if (run > bestRun) {
+            bestRun = run;
+            by0 = y0;
+            by1 = y;
+          }
+        } else run = 0;
       }
-      if (run > 0 && (!best || run > best.run)) best = { x, y0, y1: height - 1, run };
+      if (bestRun > height * 0.35) cols.push({ x, y0: by0, y1: by1, run: bestRun });
     }
-    if (!best || best.run < height * 0.25) return { ok: false, reason: "no solid wall column", best };
-    const midY = Math.round((best.y0 + best.y1) / 2);
+    if (cols.length < 4) return { ok: false, reason: "no solid wall column", cols: cols.length };
+    const wall = cols[Math.floor(cols.length / 2)];
     let paper = 0;
     let dark = 0;
-    const x0 = Math.max(0, best.x - 2);
-    const x1 = Math.min(width - 1, best.x + 2);
-    for (let y = best.y0 + 4; y <= best.y1 - 4; y++) {
-      for (let x = x0; x <= x1; x++) {
-        if (paperAt(x, y)) paper += 1;
-        if (darkAt(x, y)) dark += 1;
-      }
+    for (let y = wall.y0 + 3; y <= wall.y1 - 3; y++) {
+      if (paperAt(wall.x, y)) paper += 1;
+      if (darkAt(wall.x, y)) dark += 1;
     }
     let wash = 0;
-    const above0 = Math.max(0, best.y0 - 28);
-    for (let y = above0; y < best.y0 - 2; y++) {
+    const above0 = Math.max(0, wall.y0 - 22);
+    const x0 = cols[Math.floor(cols.length * 0.25)].x;
+    const x1 = cols[Math.floor(cols.length * 0.75)].x;
+    for (let y = above0; y < wall.y0 - 1; y++) {
       for (let x = x0; x <= x1; x++) {
         const i = (y * width + x) * 4;
         const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        if (lum < 190) wash += 1;
+        if (lum < 220) wash += 1;
       }
     }
-    const hollow = paper > dark * 0.35;
+    const hollow = paper > 2 || dark < (wall.y1 - wall.y0) * 0.7;
     return {
-      ok: dark > 20 && !hollow && wash > 4,
-      reason: hollow ? "hollow wall" : wash > 4 ? "ok" : "no wash over crest",
-      best,
+      ok: !hollow && wash >= 6,
+      reason: hollow ? "hollow wall" : wash >= 6 ? "ok" : "no wash over crest",
+      wall,
+      span: cols.length,
       paper,
       dark,
       wash,
