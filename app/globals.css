@@ -507,6 +507,16 @@
   background: rgba(247, 244, 236, 0.94);
 }
 
+.demo-banner {
+  border: 1px solid var(--coral);
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  font-family: var(--font-plex), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  background: rgba(196, 71, 54, 0.08);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
