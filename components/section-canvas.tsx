@@ -11,6 +11,7 @@ import {
   heldRipple,
   heldSurface,
   resolveSection,
+  seaWashClearsWall,
   surfaceRipple,
   swellOffset,
   waterlineU,
@@ -70,7 +71,7 @@ function drawRuns(
     const uu = Math.min(u, u1);
     const y = yAt(uu);
     const floor = yOf(chalkSchematic(uu) + chalkJitter(uu));
-    if (y >= floor - 0.6) {
+    if (!Number.isFinite(y) || y >= floor - 0.6) {
       flush();
       continue;
     }
@@ -183,16 +184,11 @@ function paint(
   const wallY = yOf(1);
   const wallH = yOf(-0.015) - wallY;
 
-  /** Sea wash: schematic surface never dips through the wall body — only at/above crest. */
-  const crestSurface = (u: number) => Math.max(1, surface(u));
   const ySurface = (u: number) => yOf(surface(u));
-  const yCrestWash = (u: number) => yOf(crestSurface(u));
 
-  const band = (u0: number, u1: number, crestOnly = false) => {
+  const band = (u0: number, u1: number) => {
     if (u1 - u0 < 0.08) return;
-    const yAt = crestOnly ? yCrestWash : ySurface;
-    drawRuns(ctx, u0, u1, yAt, crestOnly ? 1.35 : 1.55, crestOnly ? 0.9 : 0.92);
-    if (crestOnly) return;
+    drawRuns(ctx, u0, u1, ySurface, 1.55, 0.92);
     for (let i = 1; i <= motion.lines; i++) {
       const depth = 5 + i * (6 + section.chopLevel * 0.6);
       const alpha = Math.max(0.1, 0.48 - i * 0.05);
@@ -200,9 +196,21 @@ function paint(
     }
   };
 
+  /** Strokes over the crest only. Anything at or below the crest would cut the wall. */
+  const washOverCrest = (u0: number, u1: number) => {
+    if (u1 - u0 < 0.08) return;
+    const yIfClear = (depth: number) => (u: number) =>
+      seaWashClearsWall(surface(u), depth, PX) ? ySurface(u) + depth : Number.NaN;
+    drawRuns(ctx, u0, u1, yIfClear(0), 1.45, 0.94);
+    for (let i = 1; i <= motion.lines; i++) {
+      const depth = 5 + i * (6 + section.chopLevel * 0.6);
+      const alpha = Math.max(0.12, 0.5 - i * 0.045);
+      drawRuns(ctx, u0, u1, yIfClear(depth), 0.85, alpha);
+    }
+  };
+
   band(Math.min(shore, WALL_U0), WALL_U0);
   band(WALL_U1, RATIO_SUM);
-  if (section.mode === "sea") band(WALL_U0, WALL_U1, true);
 
   stroke(ctx, chalkPoints(0, WALL_U0, 0), 1.75, 0.95);
   stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0), 1.75, 0.95);
@@ -246,17 +254,15 @@ function paint(
     ctx.globalAlpha = 1;
   }
 
-  ctx.fillStyle = PAPER;
+  ctx.fillStyle = INK;
   ctx.globalAlpha = 1;
   ctx.fillRect(wallX, wallY, wallW, wallH);
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 4.6;
+  ctx.lineWidth = 2.2;
   ctx.lineJoin = "miter";
   ctx.strokeRect(wallX, wallY, wallW, wallH);
 
-  if (section.mode === "sea") {
-    drawRuns(ctx, WALL_U0, WALL_U1, yCrestWash, 1.4, 0.94);
-  }
+  if (section.mode === "sea") washOverCrest(WALL_U0, WALL_U1);
 }
 
 export function SectionCanvas({

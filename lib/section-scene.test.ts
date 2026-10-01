@@ -14,6 +14,7 @@ import {
   heldSurfaceAmp,
   overtopStrength,
   resolveSection,
+  seaWashClearsWall,
   segmentEdges,
   swellMetres,
   waterlineU,
@@ -164,6 +165,15 @@ test("pool level stays under the crest and rises on an overflow pulse", () => {
   assert.ok(high > low);
   assert.ok(sawSheet);
   assert.ok(sawGap);
+});
+
+test("sea wash crosses above the crest and stops at the wall body", () => {
+  const px = 220;
+  assert.equal(seaWashClearsWall(1.12, 0, px), true);
+  assert.equal(seaWashClearsWall(1.38, 30, px), true);
+  assert.equal(seaWashClearsWall(1.12, 40, px), false);
+  assert.equal(seaWashClearsWall(0.96, 0, px), false);
+  assert.equal(seaWashClearsWall(1.12, 0, 0), false);
 });
 
 test("chop lines get denser, faster, and looser together", () => {
