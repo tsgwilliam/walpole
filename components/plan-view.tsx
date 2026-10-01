@@ -10,8 +10,8 @@ import {
 } from "@/lib/pool-plan";
 
 const VIEW_W = 300;
-const VIEW_H = 310;
-const PAD = { l: 12, r: 12, t: 52, b: 42 };
+const VIEW_H = 332;
+const PAD = { l: 14, r: 14, t: 64, b: 52 };
 const PAPER = "#f4efe4";
 const INK = "#1c1915";
 const INK_SOFT = "#5e584e";
@@ -52,15 +52,15 @@ function PlanDrawing({ travel }: { travel: number | null }) {
       aria-label="Schematic plan of the tidal pool, north up. The sea and the wall are to the north. The beach and the cliff are to the south. The seaward side is narrower."
     >
       <rect width={VIEW_W} height={VIEW_H} fill={PAPER} />
-      <text x={VIEW_W / 2} y={14} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT}>
+      <text x={VIEW_W / 2} y={16} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT}>
         N
       </text>
-      <line x1={VIEW_W / 2} x2={VIEW_W / 2} y1={17} y2={22} stroke={INK} strokeWidth="1" />
-      <text x={VIEW_W / 2} y={nw.y - 18} textAnchor="middle" fill={INK} fontSize="14" fontFamily={FONT} letterSpacing="0.12em">
+      <line x1={VIEW_W / 2} x2={VIEW_W / 2} y1={19} y2={24} stroke={INK} strokeWidth="1" />
+      <text x={VIEW_W / 2} y={nw.y - 24} textAnchor="middle" fill={INK} fontSize="14" fontFamily={FONT} letterSpacing="0.12em">
         sea
       </text>
-      <path d={seaPath(nw.y - 10, nw.x - 4, ne.x + 4, 0.4)} fill="none" stroke={INK} strokeWidth="1.15" opacity="0.55" />
-      <path d={seaPath(nw.y - 5, nw.x + 8, ne.x - 6, 1.7)} fill="none" stroke={INK} strokeWidth="1" opacity="0.4" />
+      <path d={seaPath(nw.y - 14, nw.x - 4, ne.x + 4, 0.4)} fill="none" stroke={INK} strokeWidth="1.15" opacity="0.55" />
+      <path d={seaPath(nw.y - 8, nw.x + 8, ne.x - 6, 1.7)} fill="none" stroke={INK} strokeWidth="1" opacity="0.4" />
       <path
         d={`M ${label(nw)} L ${label(ne)} L ${label(ine)} L ${label(inw)} Z`}
         fill={PAPER}
@@ -68,7 +68,7 @@ function PlanDrawing({ travel }: { travel: number | null }) {
         strokeWidth="1.8"
         strokeLinejoin="round"
       />
-      <text x={(inw.x + ine.x) / 2} y={inw.y + 14} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT} letterSpacing="0.14em">
+      <text x={(inw.x + ine.x) / 2} y={inw.y + 18} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT} letterSpacing="0.14em">
         wall
       </text>
       <path
@@ -79,17 +79,10 @@ function PlanDrawing({ travel }: { travel: number | null }) {
         strokeLinejoin="round"
       />
       <path d={`M ${label(sw)} L ${label(se)}`} fill="none" stroke={INK} strokeWidth="1.15" opacity="0.8" />
-      <path
-        d={`M ${sw.x + 18} ${sw.y + 10} Q ${(sw.x + se.x) / 2} ${sw.y + 16} ${se.x - 18} ${sw.y + 10}`}
-        fill="none"
-        stroke={INK}
-        strokeWidth="1"
-        opacity="0.35"
-      />
-      <text x={VIEW_W / 2} y={sw.y + 18} textAnchor="middle" fill={INK} fontSize="14" fontFamily={FONT} letterSpacing="0.12em">
+      <text x={VIEW_W / 2} y={sw.y + 20} textAnchor="middle" fill={INK} fontSize="14" fontFamily={FONT} letterSpacing="0.12em">
         beach
       </text>
-      <text x={VIEW_W / 2} y={sw.y + 32} textAnchor="middle" fill={INK_SOFT} fontSize="11" fontFamily={FONT} letterSpacing="0.12em">
+      <text x={VIEW_W / 2} y={sw.y + 36} textAnchor="middle" fill={INK_SOFT} fontSize="11" fontFamily={FONT} letterSpacing="0.12em">
         cliff
       </text>
       {travel != null ? (
