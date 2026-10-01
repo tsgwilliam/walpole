@@ -124,6 +124,7 @@ export function GlanceView({
       </section>
 
       <section className="water-block">
+        <h2 className="sec-title">Water quality</h2>
         {water.lines.map((line) => (
           <p key={line} className={water.warn ? "water-line warn" : "water-line"}>
             {line}
