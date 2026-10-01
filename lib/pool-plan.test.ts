@@ -15,8 +15,10 @@ test("listing lengths close, narrower at the sea", () => {
   assert.ok(depth > 100 && depth < POOL_PLAN.sideM);
   assert.ok(POOL_PLAN.seawardM < POOL_PLAN.landwardM);
   const corners = poolPlanCorners();
-  assert.equal(corners.ne.y, depth);
-  assert.equal(corners.sw.y, 0);
+  assert.equal(corners.ne.y, 0);
+  assert.equal(corners.nw.y, 0);
+  assert.equal(corners.sw.y, -depth);
+  assert.equal(corners.se.y, -depth);
   assert.ok(corners.ne.x - corners.nw.x < corners.se.x - corners.sw.x);
 });
 
@@ -24,7 +26,7 @@ test("the centroid sits in the water and north is up on the page", () => {
   const depth = poolPlanDepthM();
   const centroid = poolPlanCentroid();
   assert.equal(centroid.x, 0);
-  assert.ok(centroid.y > depth * 0.3 && centroid.y < depth * 0.6);
+  assert.ok(centroid.y < -depth * 0.5 && centroid.y > -depth * 0.7);
   const layout = planLayout(480, 412, { l: 28, r: 28, t: 58, b: 46 });
   const corners = poolPlanCorners();
   const nw = planProject(corners.nw, layout);

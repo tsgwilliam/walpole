@@ -8,8 +8,10 @@ import { getConditions } from "./conditions.ts";
 import {
   approvedObservations,
   currentDatabaseFile,
+  defaultSettings,
   readSettings,
   resetDbForTests,
+  writeSettings,
 } from "./db.ts";
 
 const previousDataDir = process.env.DATA_DIR;
@@ -41,8 +43,8 @@ test("public conditions load when the database directory cannot be created", asy
     resetStores();
 
     const settings = readSettings();
-    assert.equal(settings.wallTopMetresCD, 4);
-    assert.equal(settings.overflowMetresCD, 3.85);
+    assert.equal(settings.wallTopMetresCD, 3.5);
+    assert.equal(settings.overflowMetresCD, 3.35);
     assert.deepEqual(approvedObservations(), []);
 
     const opened = currentDatabaseFile();
@@ -64,7 +66,7 @@ test("public conditions load when the database directory cannot be created", asy
     try {
       const sheet = await getConditions();
       assert.equal(sheet.place.name, "Walpole Bay Tidal Pool");
-      assert.equal(sheet.settings.wallTopMetresCD, 4);
+      assert.equal(sheet.settings.wallTopMetresCD, 3.5);
       assert.ok(Array.isArray(sheet.observations));
       assert.equal(sheet.observations.length, 0);
     } finally {
@@ -86,6 +88,18 @@ test("public conditions load when the database directory cannot be created", asy
     process.env.DATA_DIR = durable;
     resetStores();
     assert.equal(approvedObservations().length, 2);
+
+    writeSettings({ ...defaultSettings(), wallTopMetresCD: 4, overflowMetresCD: 3.85 });
+    resetDbForTests();
+    const adopted = readSettings();
+    assert.equal(adopted.wallTopMetresCD, 3.5);
+    assert.equal(adopted.overflowMetresCD, 3.35);
+
+    writeSettings({ ...defaultSettings(), wallTopMetresCD: 4, overflowMetresCD: 3.7 });
+    resetDbForTests();
+    const kept = readSettings();
+    assert.equal(kept.wallTopMetresCD, 4);
+    assert.equal(kept.overflowMetresCD, 3.7);
     assert.equal(currentDatabaseFile(), path.join(durable, "walpole.sqlite"));
     assert.equal(fs.existsSync(path.join(durable, "walpole.sqlite")), true);
   } finally {

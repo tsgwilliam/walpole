@@ -24,6 +24,23 @@ import { windGlanceLine, windGlanceParts, windPeriodPhrase } from "./wind-line";
 /** Slider length: this minute through the next day. */
 export const HORIZON_MINUTES = 24 * 60;
 
+/** `?wind=fromDeg,meanMs[,gustMs]` draws the plan for one wind. It does not move the tide. */
+export type PlanWindCheck = { fromDeg: number; avgMs: number; gustMs: number | null };
+
+export function parsePlanWind(value: string | undefined): PlanWindCheck | null {
+  if (!value) return null;
+  const parts = value.split(",").map((part) => Number(part.trim()));
+  if (parts.length < 2 || parts.length > 3) return null;
+  const [fromDeg, avgMs, gust] = parts;
+  if (!Number.isFinite(fromDeg) || !Number.isFinite(avgMs) || avgMs < 0) return null;
+  if (parts.length === 3 && !Number.isFinite(gust)) return null;
+  return {
+    fromDeg: ((fromDeg % 360) + 360) % 360,
+    avgMs,
+    gustMs: parts.length === 3 ? Math.max(0, gust) : null,
+  };
+}
+
 const LIVE_MS = 15 * 60 * 1000;
 const CHANGE_LEAD_MS = 12 * 60 * 60 * 1000;
 const CHANGE_FOLLOW_MS = 48 * 60 * 60 * 1000;

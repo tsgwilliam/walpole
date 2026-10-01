@@ -25,9 +25,11 @@ export default function AboutPage() {
           chalk, with two-foot overflows set six inches below the top, and that the wall was built
           so the pool is submerged at every tide. Those heights are relative to the pool floor, not
           Chart Datum. The app stores two keeper-edited numbers, <span className="mono">wallTopMetresCD</span>{" "}
-          and <span className="mono">overflowMetresCD</span>, seeded at 4.00 m and 3.85 m as an obvious
-          placeholder. Predicted Margate tide height, plus a wave-allowance stub that defaults to
-          zero, is compared with those numbers.
+          and <span className="mono">overflowMetresCD</span>, seeded at 3.50 m and 3.35 m. The crest
+          is a working estimate from a 2020 elevation model, about 3.5 m above Chart Datum, give or
+          take 0.2 m. The overflow stays six inches under it. It is not a finished survey. Predicted
+          Margate tide height, plus a wave-allowance stub that defaults to zero, is compared with
+          those numbers.
         </p>
         <p className="fine">
           Walls exposed means the tide is comfortably below the overflow. Water near the top means

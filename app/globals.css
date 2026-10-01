@@ -605,7 +605,30 @@
 @media (min-width: 840px) {
   .plan-card { grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); }
 }
-.timeline { margin-top: 12px; }
+.timeline {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin-top: 10px;
+  padding: 8px 0 6px;
+  background: var(--paper);
+  box-shadow: 0 1px 0 rgba(28, 25, 21, 0.35);
+}
+.wind-gust-mark {
+  opacity: 0.5;
+  animation: wind-gust-breathe 2.6s ease-in-out infinite;
+}
+@keyframes wind-gust-breathe {
+  0%,
+  100% { opacity: 0.28; }
+  50% { opacity: 0.75; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wind-gust-mark {
+    animation: none;
+    opacity: 0.55;
+  }
+}
 .timeline-scale {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

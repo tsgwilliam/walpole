@@ -106,11 +106,33 @@ function migrate(db: Db, file: string) {
     for (const [key, value] of Object.entries(seed)) insert.run(key, value);
   }
 
+  adoptWorkingCrest(db);
+
   // Demo plates are for a durable local file. An ephemeral database would
   // show the same two approved notes again after every cold start.
   if (isEphemeralDatabaseFile(file)) return;
   const notes = db.prepare("SELECT COUNT(*) AS n FROM observations").get() as { n: number };
   if (Number(notes?.n ?? 0) === 0) seedObservations(db);
+}
+
+/**
+ * The first seed was a round 4.00 m crest and 3.85 m overflow. If that pair
+ * is still stored untouched, move it to the working crest. A keeper who
+ * edited either number is left alone.
+ */
+function adoptWorkingCrest(db: Db) {
+  const top = db.prepare("SELECT value FROM settings WHERE key = ?").get("wallTopMetresCD") as
+    | { value: string }
+    | undefined;
+  const over = db.prepare("SELECT value FROM settings WHERE key = ?").get("overflowMetresCD") as
+    | { value: string }
+    | undefined;
+  const topN = Number(top?.value);
+  const overN = Number(over?.value);
+  if (!(Math.abs(topN - 4) < 1e-9 && Math.abs(overN - 3.85) < 1e-9)) return;
+  const update = db.prepare("UPDATE settings SET value = ? WHERE key = ?");
+  update.run(String(DEFAULT_WALL.wallTopMetresCD), "wallTopMetresCD");
+  update.run(String(DEFAULT_WALL.overflowMetresCD), "overflowMetresCD");
 }
 
 function iso(offsetMs: number) {

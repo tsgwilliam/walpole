@@ -11,7 +11,7 @@ The public glance loads without Turso. `lib/db.ts` no longer creates `data/walpo
 | `DATA_DIR` set and writable, and not inside the Vercel app | `$DATA_DIR/walpole.sqlite` | `$DATA_DIR/cache/` |
 | That directory cannot be created, including on Vercel | `/tmp/walpole.sqlite`, or an in-memory database if `/tmp` refuses the file | `/tmp/walpole-cache/`, or process memory |
 
-`/tmp` is wiped when the instance goes away. That is enough for the public sheet: wall heights fall back to the seeded placeholders (4.00 m and 3.85 m above Chart Datum), and a failed tide or weather fetch is reported on the page instead of taking it down. Approved notes, desk edits, and observation writes do **not** survive a new instance. Demo notes are seeded only for a durable file outside the OS temp directory, so a cold start does not put the local sample plates back on the public page.
+`/tmp` is wiped when the instance goes away. That is enough for the public sheet: wall heights fall back to the seeded working estimate (3.50 m and 3.35 m above Chart Datum), and a failed tide or weather fetch is reported on the page instead of taking it down. Approved notes, desk edits, and observation writes do **not** survive a new instance. Demo notes are seeded only for a durable file outside the OS temp directory, so a cold start does not put the local sample plates back on the public page.
 
 The keeper’s desk and `/observe` still open against that ephemeral file. Treat them as temporary until a durable database is connected.
 
