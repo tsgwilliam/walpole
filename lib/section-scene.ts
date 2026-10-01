@@ -183,6 +183,16 @@ export function heldRipple(u: number, timeS: number, level: ChopLevel, amp: numb
 /** Ink cap for held water. Crest of the wall is 1. */
 export const HELD_SURFACE_CAP = 0.972;
 
+/**
+ * Sea wash may cross above the crest. A stroke at or below the crest would
+ * cut the wall body, so it is left out. `depthPx` is the downward offset
+ * of a secondary line; `pxPerUnit` is the section's vertical scale.
+ */
+export function seaWashClearsWall(surfaceSchematic: number, depthPx: number, pxPerUnit: number): boolean {
+  if (!(pxPerUnit > 0) || !Number.isFinite(surfaceSchematic) || !Number.isFinite(depthPx)) return false;
+  return surfaceSchematic - depthPx / pxPerUnit > 1.008;
+}
+
 export function heldSurface(still: number, ripple: number): number {
   return Math.min(HELD_SURFACE_CAP, still + ripple);
 }

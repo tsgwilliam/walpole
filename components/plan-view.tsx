@@ -4,7 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChopLevel } from "@/lib/chop";
 import { downwindDegrees } from "@/lib/compass";
 import type { WindFrame } from "@/lib/glance-at";
-import { chopRoughness, planWindRoughBoost, roughnessAt, waveScanline } from "@/lib/plan-roughness";
+import {
+  PLAN_CHOP_ROW_GAP,
+  chopLocalToScreen,
+  chopRoughness,
+  planChopInk,
+  planWindRoughBoost,
+  roughnessAt,
+  waveScanline,
+} from "@/lib/plan-roughness";
 import {
   planLayout,
   planProject,
@@ -134,9 +142,9 @@ function localToPlan(
   travelDeg: number,
   layout: ReturnType<typeof planLayout>,
 ): PlanPoint {
-  const rad = (travelDeg * Math.PI) / 180;
-  const sx = mid.x + lx * Math.cos(rad) + ly * Math.sin(rad);
-  const sy = mid.y - lx * Math.sin(rad) + ly * Math.cos(rad);
+  const screen = chopLocalToScreen(lx, ly, travelDeg);
+  const sx = mid.x + screen.x;
+  const sy = mid.y + screen.y;
   return {
     x: (sx - layout.originX) / layout.scale,
     y: (layout.originY - sy) / layout.scale,
@@ -180,27 +188,21 @@ function RoughnessField({
       Math.hypot(se.x - mid.x, se.y - mid.y),
       Math.hypot(sw.x - mid.x, sw.y - mid.y),
     );
-    const half = reach * 2.1;
-    const stepY = 7;
-    const stepX = 9;
+    const half = reach * 1.15;
+    const stepY = PLAN_CHOP_ROW_GAP;
+    const stepX = 11;
 
     for (let ly = -half; ly <= half; ly += stepY) {
       let rough = 0;
       for (let lx = -half; lx <= half; lx += stepX) {
-        const sample = roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough);
+        const sample = roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough, meanMs ?? 0);
         rough = Math.max(rough, sample + windBoost * (1 - sample * 0.35));
       }
-      if (rough < 0.08) continue;
-      const amp = (0.55 + rough * 2.2) * (1 + windBoost * 0.35);
+      const ink = planChopInk(rough);
+      if (!ink) continue;
       const drift = phase + ly * 0.04;
-      const d = waveScanline(-half, half, ly, amp, drift, 5 + rough * 1.5);
-      if (d) {
-        rows.push({
-          d,
-          opacity: Math.min(0.52, 0.14 + rough * 0.38),
-          width: 0.55 + rough * 0.45,
-        });
-      }
+      const d = waveScanline(-half, half, ly, ink.amp, drift, 6);
+      if (d) rows.push({ d, opacity: ink.opacity, width: ink.width });
     }
 
     return rows;
