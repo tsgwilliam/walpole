@@ -169,18 +169,7 @@ export function buildWallReading(
 
   const from = Math.max(dayStart, ordered[0]?.t ?? dayStart);
   const to = Math.min(dayEnd, ordered[ordered.length - 1]?.t ?? dayEnd);
-  const step = 60 * 1000;
-  const changes: StateChange[] = [];
-  let previousState: WallStateId | null = null;
-  for (let t = from; t < to; t += step) {
-    const h = interpolateHeight(ordered, t);
-    if (h == null) continue;
-    const s = classifyInstant(h, t, crossings, settings);
-    if (s !== previousState) {
-      changes.push({ t, state: s });
-      previousState = s;
-    }
-  }
+  const changes = listStateChanges(ordered, crossings, settings, from, to);
 
   const waterfallWindows = crossings
     .map((start) => ({
@@ -203,5 +192,54 @@ export function buildWallReading(
     changes,
     waterfallWindows,
     nextChange,
+  };
+}
+
+export function tideCrossings(
+  samples: HeightSample[],
+  settings: WallSettings,
+): { ordered: HeightSample[]; crossings: number[] } | null {
+  if (settingsAreUsable(settings)) return null;
+  const ordered = [...samples].sort((a, b) => a.t - b.t);
+  return {
+    ordered,
+    crossings: risingCrossings(effectiveSeries(ordered, settings.waveAllowanceMetres), settings.overflowMetresCD),
+  };
+}
+
+/** State changes on a one-minute step. `ordered` is sorted by time. */
+export function listStateChanges(
+  ordered: HeightSample[],
+  crossings: number[],
+  settings: WallSettings,
+  from: number,
+  to: number,
+): StateChange[] {
+  const step = 60 * 1000;
+  const changes: StateChange[] = [];
+  let previousState: WallStateId | null = null;
+  for (let t = from; t < to; t += step) {
+    const h = interpolateHeight(ordered, t);
+    if (h == null) continue;
+    const s = classifyInstant(h, t, crossings, settings);
+    if (s !== previousState) {
+      changes.push({ t, state: s });
+      previousState = s;
+    }
+  }
+  return changes;
+}
+
+export function readingAt(
+  ordered: HeightSample[],
+  crossings: number[],
+  settings: WallSettings,
+  t: number,
+): { state: WallStateId; heightMetres: number } | null {
+  const tide = interpolateHeight(ordered, t);
+  if (tide == null) return null;
+  return {
+    state: classifyInstant(tide, t, crossings, settings),
+    heightMetres: tide + settings.waveAllowanceMetres,
   };
 }

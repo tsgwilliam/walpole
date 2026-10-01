@@ -39,6 +39,13 @@ export function modeEndAt(
   return next?.at ?? null;
 }
 
+/** No mode change inside the forward window the slider can see. */
+export function modeUnbrokenLine(mode: GlanceMode, reach: "day" | "curve"): string {
+  const name = MODE_NAME[mode];
+  if (reach === "day") return `${name} still on through the next 24 hours`;
+  return `${name} still on as far as this curve goes`;
+}
+
 export function modeRemainingLine(mode: GlanceMode, endIso: string | null, nowIso: string): string {
   const name = MODE_NAME[mode];
   if (!endIso) return `${name} active for the rest of today`;

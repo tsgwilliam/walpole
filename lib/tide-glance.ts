@@ -1,4 +1,37 @@
-import { formatLondonTime } from "./time";
+import { formatLondonTime, londonDayBounds, londonDayKey } from "./time";
+
+/** Samples kept so a scrubbed minute can see the recent peak and the next two days. */
+export const GLANCE_TIDE_LOOKBACK_MS = 12 * 60 * 60 * 1000;
+export const GLANCE_TIDE_LOOKAHEAD_MS = 48 * 60 * 60 * 1000;
+
+export function glanceTideDays(now: Date): Set<string> {
+  const days = new Set<string>();
+  days.add(londonDayKey(now));
+  let cursor = londonDayBounds(now).end.getTime() + 60_000;
+  for (let i = 0; i < 2; i++) {
+    days.add(londonDayKey(new Date(cursor)));
+    cursor = londonDayBounds(new Date(cursor)).end.getTime() + 60_000;
+  }
+  return days;
+}
+
+/** Tide samples and highs/lows the 24-hour slider is allowed to read. */
+export function selectGlanceTide<E extends { t: string }>(
+  points: { t: string; h: number }[],
+  events: E[],
+  now: Date,
+): { points: { t: string; h: number }[]; events: E[] } {
+  const from = now.getTime() - GLANCE_TIDE_LOOKBACK_MS;
+  const to = now.getTime() + GLANCE_TIDE_LOOKAHEAD_MS;
+  const days = glanceTideDays(now);
+  return {
+    points: points.filter((point) => {
+      const t = Date.parse(point.t);
+      return Number.isFinite(t) && t >= from && t <= to;
+    }),
+    events: events.filter((event) => days.has(londonDayKey(new Date(event.t)))),
+  };
+}
 
 export function tideTrend(
   points: { t: string; h: number }[],

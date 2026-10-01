@@ -1,129 +1,103 @@
-import Link from "next/link";
 import type { ConditionsSheet } from "@/lib/conditions";
-import { chopLabel, classifyChop } from "@/lib/chop";
-import { glanceMode, MODE_HEADLINE, modeEndAt, modeRemainingLine } from "@/lib/modes";
+import { chopThresholds } from "@/lib/chop";
+import type { GlanceHour, GlanceSource } from "@/lib/glance-at";
 import type { PictureMode } from "@/lib/section-scene";
-import { recentTidePeak, tideExtremesLine, tideTrend } from "@/lib/tide-glance";
-import { windGlanceLine } from "@/lib/wind-line";
 import { parseLondonCivil } from "@/lib/time";
 import { waterGlanceLines } from "@/lib/water-copy";
-import { LiveSection } from "./live-section";
+import { GlanceView } from "./glance-view";
 
-function waterLine(sewage: ConditionsSheet["sewage"], nowIso: string) {
-  return waterGlanceLines({
-    status: sewage.error || sewage.status === "unavailable" ? "unavailable" : sewage.status,
-    warning: sewage.warning,
-    forced: sewage.forced,
-    suppressed: sewage.suppressed,
-    lastReleaseEnd: sewage.lastReleaseEnd,
-    nowIso,
+function mergeHours(weather: NonNullable<ConditionsSheet["weather"]>): GlanceHour[] {
+  return weather.hourly.map((hour) => {
+    const t = parseLondonCivil(hour.t);
+    let best: (typeof weather.waveHourly)[number] | null = null;
+    let bestDt = Infinity;
+    for (const wave of weather.waveHourly) {
+      const dt = Math.abs(parseLondonCivil(wave.t) - t);
+      if (dt < bestDt) {
+        bestDt = dt;
+        best = wave;
+      }
+    }
+    const matched = best && bestDt <= 45 * 60 * 1000 ? best : null;
+    return {
+      t,
+      tempC: hour.tempC,
+      windMph: hour.windMph,
+      windGustMph: hour.windGustMph,
+      windDirectionDeg: hour.windDirectionDeg,
+      waveHeightM: matched?.waveHeightM ?? null,
+      wavePeriodS: matched?.wavePeriodS ?? null,
+    };
   });
+}
+
+function toSource(sheet: ConditionsSheet, sectionMode: PictureMode | null): GlanceSource {
+  const weather = sheet.weather;
+  const thresholds = chopThresholds();
+  return {
+    generatedAt: sheet.generatedAt,
+    sectionMode,
+    settings: {
+      wallTopMetresCD: sheet.settings.wallTopMetresCD,
+      overflowMetresCD: sheet.settings.overflowMetresCD,
+      approachBandMetres: sheet.settings.approachBandMetres,
+      waterfallWindowMinutes: sheet.settings.waterfallWindowMinutes,
+      waveAllowanceMetres: sheet.settings.waveAllowanceMetres,
+    },
+    settingsProblem: sheet.settingsProblem,
+    tideError: sheet.tideError,
+    tide: sheet.tide
+      ? {
+          stale: sheet.tide.stale,
+          points: sheet.tide.points
+            .map((point) => ({ t: Date.parse(point.t), h: point.h }))
+            .filter((point) => Number.isFinite(point.t)),
+          events: sheet.tide.events,
+        }
+      : null,
+    weather: weather
+      ? {
+          stale: weather.stale,
+          temperatureC: weather.temperatureC,
+          windMph: weather.windMph,
+          windGustMph: weather.windGustMph,
+          windDirectionDeg: weather.windDirectionDeg,
+          windCompass: weather.windCompass,
+          windWord: weather.windWord,
+          waveHeightM: weather.waveHeightM,
+          wavePeriodS: weather.wavePeriodS,
+          hours: mergeHours(weather),
+        }
+      : null,
+    chopLightKt: thresholds.lightKt,
+    chopStrongKt: thresholds.strongKt,
+  };
 }
 
 export function Glance({
   sheet,
   sectionMode,
+  initialMinutes,
 }: {
   sheet: ConditionsSheet;
   /** `?mode=` draws one picture for QA. The live page leaves this unset. */
   sectionMode?: PictureMode | null;
+  /** Minutes after the sheet time. `?at=` sets this; the slider starts here. */
+  initialMinutes: number;
 }) {
-  const wall = sheet.wall;
-  const weather = sheet.weather;
-  const chop = weather
-    ? classifyChop({ windMph: weather.windMph, compass: weather.windCompass })
-    : null;
-  const trend = wall && sheet.tide ? tideTrend(sheet.tide.points, sheet.generatedAt, wall.heightMetres) : null;
-  const mode = wall ? glanceMode(wall.state) : null;
-  const remaining = mode
-    ? modeRemainingLine(mode, modeEndAt(wall!.state, wall!.changes, sheet.generatedAt), sheet.generatedAt)
-    : null;
-  const water = waterLine(sheet.sewage, sheet.generatedAt);
-  const extrema = sheet.tide ? tideExtremesLine(sheet.tide.events) : null;
-
-  const tideFact = wall
-    ? `tide ${wall.heightMetres.toFixed(1)} m CD${trend ? ` · ${trend}` : ""}${sheet.tide?.stale ? " · saved" : ""}`
-    : "tide quiet";
-
-  const airFact = weather
-    ? `air ${Math.round(weather.temperatureC)}°${weather.stale ? " · saved" : ""}`
-    : "air quiet";
-  const windFact = weather
-    ? windGlanceLine({
-        compass: weather.windCompass,
-        windMph: weather.windMph,
-        windGustMph: weather.windGustMph,
-        hourly: weather.hourly.map((hour) => ({ t: parseLondonCivil(hour.t), windMph: hour.windMph })),
-        nowIso: sheet.generatedAt,
-        stale: weather.stale,
-      })
-    : null;
-
-  const section =
-    sectionMode || wall
-      ? {
-          mode: sectionMode ?? null,
-          seaMetresCD: wall?.heightMetres ?? null,
-          wallTopMetresCD: sheet.settings.wallTopMetresCD,
-          falling: trend === "falling",
-          recentPeakMetresCD: sheet.tide ? recentTidePeak(sheet.tide.points, sheet.generatedAt) : null,
-          waveHeightM: weather?.waveHeightM ?? null,
-          wavePeriodS: weather?.wavePeriodS ?? null,
-          windMph: weather?.windMph ?? null,
-          chopLevel: chop?.level ?? 2,
-          compass: weather?.windCompass ?? null,
-        }
-      : null;
-
+  const water = waterGlanceLines({
+    status: sheet.sewage.error || sheet.sewage.status === "unavailable" ? "unavailable" : sheet.sewage.status,
+    warning: sheet.sewage.warning,
+    forced: sheet.sewage.forced,
+    suppressed: sheet.sewage.suppressed,
+    lastReleaseEnd: sheet.sewage.lastReleaseEnd,
+    nowIso: sheet.generatedAt,
+  });
   return (
-    <div className="glance-col" id="reading">
-      <div className="hero">
-        <LiveSection input={section} />
-      </div>
-
-      <div className="mode-block">
-        <h1 className="now-headline">{mode ? MODE_HEADLINE[mode] : "No reading"}</h1>
-        {remaining ? <p className="mode-remain">{remaining}</p> : null}
-      </div>
-
-      <p className="facts-strip">
-        <span>{tideFact}</span>
-        <span>{airFact}</span>
-        {windFact ? <span>{windFact}</span> : null}
-      </p>
-      {extrema ? <p className="tide-extrema">{extrema}</p> : null}
-
-      <section>
-        <h2 className="sec-title">Water quality</h2>
-        {water.lines.map((line) => (
-          <p key={line} className={water.warn ? "water-line warn" : "water-line"}>
-            {line}
-          </p>
-        ))}
-      </section>
-
-      <footer className="glance-foot">
-        <p>
-          <a href="https://easytide.admiralty.co.uk/">EasyTide Margate</a>
-          {" · "}
-          <a href="https://open-meteo.com/">Open-Meteo</a>
-          {" · "}
-          <a href="https://riversandseaswatch.southernwater.co.uk/">Southern Water</a>
-          {" · "}
-          <Link href="/observe">Note</Link>
-          {" · skin: Kem / Tributary"}
-        </p>
-        <p>Swim at your own risk.</p>
-      </footer>
-
-      <p className="sr-only">
-        {mode
-          ? `${MODE_HEADLINE[mode]}. ${remaining}. Predicted ${wall!.heightMetres.toFixed(1)} metres Chart Datum${trend ? `, ${trend}` : ""}.`
-          : sheet.settingsProblem || sheet.tideError || "Wall reading withheld."}
-        {chop ? ` Chop: ${chopLabel(chop.level)}. ${chop.caption}.` : ""}
-        {windFact ? ` Wind: ${windFact}.` : ""}
-        {extrema ? ` ${extrema}.` : ""}
-      </p>
-    </div>
+    <GlanceView
+      source={toSource(sheet, sectionMode ?? null)}
+      initialMinutes={initialMinutes}
+      water={{ lines: water.lines, warn: water.warn }}
+    />
   );
 }

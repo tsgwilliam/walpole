@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chopLabel, classifyChop, MPH_TO_KT } from "./chop.ts";
+import { chopLabel, classifyChop, cliffTemperLine, MPH_TO_KT } from "./chop.ts";
 
 const thresholds = { lightKt: 10, strongKt: 18 };
 
@@ -50,6 +50,16 @@ test("captions name the cliff, not a paragraph", () => {
   assert.equal(at(mph(12), "N").caption, "N wind · cliff less help");
   assert.equal(at(mph(12), "SSW").caption, "SSW wind · cliff takes some");
   assert.equal(at(mph(12), "E").caption, "E wind");
+});
+
+test("cliff tempering is a direction guess, and cross-shore stays unknown", () => {
+  assert.match(cliffTemperLine("SSW"), /southerly/i);
+  assert.match(cliffTemperLine("S"), /direction guess/);
+  assert.match(cliffTemperLine("N"), /little help/);
+  assert.match(cliffTemperLine("ENE"), /direction guess/);
+  assert.match(cliffTemperLine("W"), /unknown/);
+  assert.match(cliffTemperLine("E"), /unknown/);
+  assert.equal(cliffTemperLine(""), "Cliff tempering unknown.");
 });
 
 test("broken thresholds fall back to 10 and 18", () => {

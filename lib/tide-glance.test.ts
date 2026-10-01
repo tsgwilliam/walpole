@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { recentTidePeak, tideExtremesLine, tideTrend } from "./tide-glance.ts";
+import { glanceTideDays, recentTidePeak, selectGlanceTide, tideExtremesLine, tideTrend } from "./tide-glance.ts";
 
 const now = "2026-10-01T12:00:00.000Z";
 
@@ -25,6 +25,28 @@ test("recent peak is the highest sample in the last eight hours", () => {
   ];
   assert.equal(recentTidePeak(points, now), 4.2);
   assert.equal(recentTidePeak([], now), null);
+});
+
+test("the glance keeps the last 12 hours and the next two days of tide", () => {
+  const now = new Date("2026-10-01T18:00:00.000Z");
+  const span = selectGlanceTide(
+    [
+      { t: "2026-10-01T05:00:00.000Z", h: 1 },
+      { t: "2026-10-01T10:00:00.000Z", h: 2 },
+      { t: "2026-10-02T18:00:00.000Z", h: 3 },
+      { t: "2026-10-03T20:00:00.000Z", h: 4 },
+    ],
+    [
+      { t: "2026-10-01T08:00:00.000Z", h: 0.8, kind: "low" as const },
+      { t: "2026-10-02T08:00:00.000Z", h: 4.6, kind: "high" as const },
+      { t: "2026-10-04T08:00:00.000Z", h: 0.4, kind: "low" as const },
+    ],
+    now,
+  );
+  assert.deepEqual(span.points.map((point) => point.h), [2, 3]);
+  assert.deepEqual(span.events.map((event) => event.h), [0.8, 4.6]);
+  assert.equal(glanceTideDays(now).has("2026-10-01"), true);
+  assert.equal(glanceTideDays(now).has("2026-10-02"), true);
 });
 
 test("highs and lows share one short line", () => {
