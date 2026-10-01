@@ -16,6 +16,10 @@ export type WeatherBundle = {
   windWord: string;
   todayRainMm: number;
   todayMaxRainChance: number | null;
+  /** Open-Meteo Marine at the pin. Null when that feed does not answer. */
+  waveHeightM: number | null;
+  wavePeriodS: number | null;
+  waveDirectionDeg: number | null;
   hourly: { t: string; tempC: number; rainMm: number; pop: number | null; windMph: number }[];
 };
 
@@ -81,7 +85,42 @@ type Raw = {
   };
 };
 
-async function fetchWeather(): Promise<WeatherBundle> {
+async function fetchWave(): Promise<{
+  waveHeightM: number;
+  wavePeriodS: number | null;
+  waveDirectionDeg: number | null;
+} | null> {
+  try {
+    const url = new URL("https://marine-api.open-meteo.com/v1/marine");
+    url.searchParams.set("latitude", String(POOL.latitude));
+    url.searchParams.set("longitude", String(POOL.longitude));
+    url.searchParams.set("current", "wave_height,wave_period,wave_direction");
+    url.searchParams.set("cell_selection", "sea");
+    url.searchParams.set("timezone", "Europe/London");
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "WalpoleBayConditions/0.1" },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const raw = (await response.json()) as {
+      current?: { wave_height?: number; wave_period?: number; wave_direction?: number };
+    };
+    const height = raw.current?.wave_height;
+    if (typeof height !== "number" || !Number.isFinite(height)) return null;
+    const period = raw.current?.wave_period;
+    const direction = raw.current?.wave_direction;
+    return {
+      waveHeightM: height,
+      wavePeriodS: typeof period === "number" && Number.isFinite(period) ? period : null,
+      waveDirectionDeg: typeof direction === "number" && Number.isFinite(direction) ? direction : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchForecast(): Promise<Omit<WeatherBundle, "waveHeightM" | "wavePeriodS" | "waveDirectionDeg">> {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(POOL.latitude));
   url.searchParams.set("longitude", String(POOL.longitude));
@@ -139,6 +178,16 @@ async function fetchWeather(): Promise<WeatherBundle> {
   };
 }
 
+async function fetchWeather(): Promise<WeatherBundle> {
+  const [forecast, wave] = await Promise.all([fetchForecast(), fetchWave()]);
+  return {
+    ...forecast,
+    waveHeightM: wave?.waveHeightM ?? null,
+    wavePeriodS: wave?.wavePeriodS ?? null,
+    waveDirectionDeg: wave?.waveDirectionDeg ?? null,
+  };
+}
+
 export async function getWeather(fresh: boolean) {
   return loadCached("weather-pool", THREE_HOURS, fresh, fetchWeather);
 }
@@ -146,5 +195,5 @@ export async function getWeather(fresh: boolean) {
 export const WEATHER_SOURCE = {
   name: "Open-Meteo",
   url: LINKS.openMeteo,
-  note: "Model weather at the pool pin. Not a beach anemometer. Cached and refreshed a few times a day.",
+  note: "Model weather at the pool pin, plus marine wave height when that feed answers. Not a beach anemometer. Cached and refreshed a few times a day.",
 };

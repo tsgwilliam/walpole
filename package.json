@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 43123",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --import ./lib/register-ts-hooks.mjs --test lib/wall-state.test.ts lib/time.test.ts lib/chop.test.ts lib/modes.test.ts lib/wind-line.test.ts lib/water-copy.test.ts lib/readonly-data.test.ts"
+    "test": "node --experimental-strip-types --import ./lib/register-ts-hooks.mjs --test lib/wall-state.test.ts lib/time.test.ts lib/chop.test.ts lib/modes.test.ts lib/wind-line.test.ts lib/water-copy.test.ts lib/readonly-data.test.ts lib/section-scene.test.ts lib/tide-glance.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
