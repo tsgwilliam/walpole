@@ -5,10 +5,13 @@ const THREE_HOURS = 3 * 60 * 60 * 1000;
 
 export type WindSample = { t: number; windMph: number };
 
+const HOUR_MS = 60 * 60 * 1000;
+
 /**
- * Glance wind line. Average is the Open-Meteo hourly speeds in the last
- * three hours (one value an hour — that is the period the feed gives).
- * Gust is the current gust, converted from the same feed.
+ * Glance wind line. Average is the speeds in the last three hours, one
+ * value an hour. A denser series (the storm demo samples every quarter
+ * hour) still counts as hours: the latest sample in each clock hour, and
+ * at most three of those. Gust is the reading at the scrubbed minute.
  */
 export function windGlanceParts(input: {
   windMph: number;
@@ -17,10 +20,15 @@ export function windGlanceParts(input: {
   nowIso: string;
 }): { avgMs: string; period: string; gustMs: string | null } {
   const now = Date.parse(input.nowIso);
-  const recent = input.hourly.filter((sample) => {
-    if (!Number.isFinite(sample.windMph)) return false;
-    return sample.t <= now && sample.t > now - THREE_HOURS;
-  });
+  const byHour = new Map<number, WindSample>();
+  for (const sample of input.hourly) {
+    if (!Number.isFinite(sample.windMph)) continue;
+    if (!(sample.t <= now && sample.t > now - THREE_HOURS)) continue;
+    const key = Math.floor(sample.t / HOUR_MS);
+    const prev = byHour.get(key);
+    if (!prev || sample.t >= prev.t) byHour.set(key, sample);
+  }
+  const recent = [...byHour.values()].sort((a, b) => a.t - b.t).slice(-3);
   const avgMph = recent.length
     ? recent.reduce((sum, sample) => sum + sample.windMph, 0) / recent.length
     : input.windMph;

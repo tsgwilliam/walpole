@@ -38,11 +38,13 @@ export function GlanceView({
   source,
   initialMinutes,
   planWind,
+  demoLabel,
   water,
 }: {
   source: GlanceSource;
   initialMinutes: number;
   planWind: PlanWindCheck | null;
+  demoLabel: string | null;
   water: { lines: string[]; warn: boolean };
 }) {
   const prepared = useMemo(() => prepareGlance(source), [source]);
@@ -65,7 +67,13 @@ export function GlanceView({
       data-glance-mode={frame.mode ?? ""}
       data-sea-m={frame.section?.seaMetresCD ?? ""}
       data-chop={frame.section?.chopLevel ?? ""}
+      data-demo={demoLabel ? "storm" : undefined}
     >
+      {demoLabel ? (
+        <p className="demo-banner" role="status">
+          {demoLabel}
+        </p>
+      ) : null}
       <div className="hero">
         <LiveSection input={frame.section} />
       </div>
@@ -127,10 +135,19 @@ export function GlanceView({
 
       <footer className="glance-foot">
         <p>
-          <a href="https://easytide.admiralty.co.uk/">EasyTide Margate</a>
-          {" · "}
-          <a href="https://open-meteo.com/">Open-Meteo</a>
-          {" · "}
+          {demoLabel ? (
+            <>
+              Synthetic tide and weather on this sheet
+              {" · "}
+            </>
+          ) : (
+            <>
+              <a href="https://easytide.admiralty.co.uk/">EasyTide Margate</a>
+              {" · "}
+              <a href="https://open-meteo.com/">Open-Meteo</a>
+              {" · "}
+            </>
+          )}
           <a href="https://riversandseaswatch.southernwater.co.uk/">Southern Water</a>
           {" · "}
           <Link href="/observe">Note</Link>

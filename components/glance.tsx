@@ -79,6 +79,7 @@ export function Glance({
   sectionMode,
   initialMinutes,
   planWind,
+  demoLabel,
 }: {
   sheet: ConditionsSheet;
   /** `?mode=` draws one picture for QA. The live page leaves this unset. */
@@ -87,6 +88,8 @@ export function Glance({
   initialMinutes: number;
   /** `?wind=` draws the plan for one wind. The tide and the section stay put. */
   planWind?: PlanWindCheck | null;
+  /** Set on `?demo=storm`. Null on the live sheet. */
+  demoLabel?: string | null;
 }) {
   const water = waterGlanceLines({
     status: sheet.sewage.error || sheet.sewage.status === "unavailable" ? "unavailable" : sheet.sewage.status,
@@ -101,6 +104,7 @@ export function Glance({
       source={toSource(sheet, sectionMode ?? null)}
       initialMinutes={initialMinutes}
       planWind={planWind ?? null}
+      demoLabel={demoLabel ?? null}
       water={{ lines: water.lines, warn: water.warn }}
     />
   );

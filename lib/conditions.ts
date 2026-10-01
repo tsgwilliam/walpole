@@ -202,12 +202,15 @@ function sewagePayload(
   };
 }
 
-export async function getConditions(options: { fresh?: boolean } = {}): Promise<ConditionsSheet> {
+export async function getConditions(
+  options: { fresh?: boolean; liveMarine?: boolean } = {},
+): Promise<ConditionsSheet> {
   const fresh = options.fresh === true;
+  const liveMarine = options.liveMarine !== false;
   const settings = readSettings();
   const [tideLoaded, weatherLoaded, eaLoaded, sewageLoaded] = await Promise.all([
-    getTide(fresh),
-    getWeather(fresh),
+    liveMarine ? getTide(fresh) : Promise.resolve(null),
+    liveMarine ? getWeather(fresh) : Promise.resolve(null),
     getEaQuality(fresh),
     getSewage(fresh),
   ]);

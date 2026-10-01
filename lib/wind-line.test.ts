@@ -26,3 +26,29 @@ test("wind line is metres per second, with a labelled average and gust", () => {
   assert.equal(line.includes("kt"), false);
   assert.equal(line.includes("mph"), false);
 });
+
+test("quarter-hour samples still average one value an hour, not every sample", () => {
+  const now = Date.parse("2026-10-01T12:10:00.000Z");
+  const hourly: { t: number; windMph: number }[] = [];
+  for (const hour of [8, 9, 10, 11, 12]) {
+    for (const minute of [0, 15, 30, 45]) {
+      const t = Date.parse(
+        `2026-10-01T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`,
+      );
+      if (t > now) continue;
+      hourly.push({ t, windMph: minute === 45 ? 20 : 10 });
+    }
+  }
+  const line = windGlanceLine({
+    compass: "SW",
+    windMph: 99,
+    windGustMph: 30,
+    nowIso: new Date(now).toISOString(),
+    hourly,
+  });
+  // Hours 10, 11, and 12: latest samples 20, 20, and 10 mph.
+  const expected = ((20 + 20 + 10) / 3) * MPH_TO_MS;
+  assert.match(line, /3-hour avg/);
+  assert.equal(line.includes("12-hour"), false);
+  assert.ok(line.startsWith(`SW · ${expected.toFixed(1)} m/s 3-hour avg`));
+});
