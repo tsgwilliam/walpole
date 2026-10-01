@@ -1,6 +1,10 @@
-import { compassFromDegrees, downwindDegrees } from "@/lib/compass";
-import { LINKS } from "@/lib/constants";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { ChopLevel } from "@/lib/chop";
+import { downwindDegrees } from "@/lib/compass";
 import type { WindFrame } from "@/lib/glance-at";
+import { chopRoughness, roughnessAt, waveScanline } from "@/lib/plan-roughness";
 import {
   planLayout,
   planProject,
@@ -8,26 +12,24 @@ import {
   poolPlanCorners,
   type PlanPoint,
 } from "@/lib/pool-plan";
-import { QUIET_LABEL, polygonCentroid, quieterZone, type QuietZone } from "@/lib/shelter";
+import { quieterZone, type QuietZone } from "@/lib/shelter";
 import { windGlyphMark } from "@/lib/wind-glyph";
 
 const VIEW_W = 300;
-const VIEW_H = 332;
-const PAD = { l: 14, r: 14, t: 64, b: 52 };
+const VIEW_H = 300;
+const PAD = { l: 18, r: 18, t: 44, b: 44 };
 const PAPER = "#f4efe4";
 const INK = "#1c1915";
-const INK_SOFT = "#5e584e";
 const WATER = "#2f74a3";
-
 const FONT = "var(--font-plex), ui-monospace, monospace";
 
 function seaPath(y: number, x0: number, x1: number, phase: number): string {
-  const steps = 16;
+  const steps = 14;
   let d = "";
   for (let i = 0; i <= steps; i++) {
     const u = i / steps;
     const x = x0 + (x1 - x0) * u;
-    const wave = Math.sin(u * Math.PI * 2 + phase) * 1.5;
+    const wave = Math.sin(u * Math.PI * 2 + phase) * 1.4;
     d += `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${(y + wave).toFixed(1)}`;
   }
   return d;
@@ -37,15 +39,9 @@ function pathOf(points: PlanPoint[]): string {
   return points.map((point, i) => `${i === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
 }
 
-function QuietPatch({ zone, layout }: { zone: QuietZone; layout: ReturnType<typeof planLayout> }) {
-  const projected = zone.polygon.map((point) => planProject(point, layout));
-  const d = `${pathOf(projected)} Z`;
-  return (
-    <g className="quiet-zone" data-quiet={zone.whole ? "whole" : "lee"}>
-      <path d={d} fill={INK} opacity={0.09} />
-      <path d={d} fill="url(#quiet-hatch)" />
-    </g>
-  );
+function poolInteriorPath(corners: { nw: PlanPoint; ne: PlanPoint; se: PlanPoint; sw: PlanPoint }): string {
+  const { nw, ne, se, sw } = corners;
+  return `${pathOf([nw, ne, se, sw])} Z`;
 }
 
 function WindGlyph({
@@ -66,42 +62,109 @@ function WindGlyph({
   const gustTip = tip - (gust - mean);
   const wing = head * 0.68;
   const showGust = gust > mean + 0.5;
+  const speedLabel = gustMs != null && gustMs > avgMs + 0.05 ? `${avgMs.toFixed(1)} · ${gustMs.toFixed(1)}` : avgMs.toFixed(1);
+  const rad = (travel * Math.PI) / 180;
+  const labelX = at.x + Math.sin(rad) * 14;
+  const labelY = at.y - Math.cos(rad) * 14;
   return (
-    <g
-      className="wind-glyph"
-      data-wind-mean-px={mean.toFixed(1)}
-      data-wind-gust-px={gust.toFixed(1)}
-      data-wind-width={meanWidth.toFixed(2)}
-      data-wind-colour={meanColour}
-      data-wind-gust-colour={gustColour}
-      transform={`translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(${travel})`}
-    >
-      {showGust ? (
-        <g className="wind-gust-mark">
-          <line x1={0} y1={tail} x2={0} y2={gustTip + head * 0.7} stroke={gustColour} strokeWidth={gustWidth} />
-          <path
-            d={`M ${(-wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)} L 0 ${gustTip.toFixed(1)} L ${(wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)}`}
-            fill="none"
-            stroke={gustColour}
-            strokeWidth={gustWidth}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </g>
+    <>
+      <g
+        className="wind-glyph"
+        data-wind-mean-px={mean.toFixed(1)}
+        data-wind-gust-px={gust.toFixed(1)}
+        data-wind-width={meanWidth.toFixed(2)}
+        data-wind-colour={meanColour}
+        transform={`translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(${travel})`}
+      >
+        {showGust ? (
+          <g className="wind-gust-mark">
+            <line x1={0} y1={tail} x2={0} y2={gustTip + head * 0.7} stroke={gustColour} strokeWidth={gustWidth} />
+            <path
+              d={`M ${(-wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)} L 0 ${gustTip.toFixed(1)} L ${(wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)}`}
+              fill="none"
+              stroke={gustColour}
+              strokeWidth={gustWidth}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          </g>
+        ) : null}
+        <line x1={0} y1={tail} x2={0} y2={tip + head * 0.55} stroke={meanColour} strokeWidth={meanWidth} strokeLinecap="round" />
+        <path d={`M 0 ${tip.toFixed(1)} L ${(-wing).toFixed(1)} ${(tip + head).toFixed(1)} H ${wing.toFixed(1)} Z`} fill={meanColour} />
+      </g>
+      <text className="wind-speed-label" x={labelX} y={labelY} textAnchor="middle" fill={meanColour} fontSize="11" fontFamily={FONT}>
+        {speedLabel} m/s
+      </text>
+    </>
+  );
+}
+
+function RoughnessField({
+  chopLevel,
+  zone,
+  phase,
+}: {
+  chopLevel: ChopLevel;
+  zone: QuietZone | null;
+  phase: number;
+}) {
+  const lines = useMemo(() => {
+    const rows: { d: string; opacity: number }[] = [];
+    const layout = planLayout(VIEW_W, VIEW_H, PAD);
+    const corners = poolPlanCorners();
+    const nw = planProject(corners.nw, layout);
+    const ne = planProject(corners.ne, layout);
+    const se = planProject(corners.se, layout);
+    const sw = planProject(corners.sw, layout);
+    const quietForRough =
+      zone == null
+        ? null
+        : zone.whole
+          ? { whole: true, polygon: [] as PlanPoint[] }
+          : { whole: false, polygon: zone.polygon };
+
+    const yTop = Math.min(nw.y, ne.y) + 8;
+    const yBot = Math.max(sw.y, se.y) - 6;
+    const xLeft = Math.min(nw.x, sw.x) + 4;
+    const xRight = Math.max(ne.x, se.x) - 4;
+    const stepY = 7;
+
+    for (let y = yTop; y <= yBot; y += stepY) {
+      const mid = { x: (xLeft + xRight) / 2, y };
+      const rough = roughnessAt(
+        {
+          x: (mid.x - layout.originX) / layout.scale,
+          y: (layout.originY - mid.y) / layout.scale,
+        },
+        chopLevel,
+        quietForRough,
+      );
+      if (rough < 0.08) continue;
+      const amp = 0.6 + rough * 2.4;
+      const d = waveScanline(xLeft, xRight, y, amp, phase + y * 0.04, 5 + rough * 3);
+      if (d) rows.push({ d, opacity: 0.12 + rough * 0.55 });
+    }
+
+    if (zone?.whole && chopRoughness(chopLevel) > 0.05) {
+      const wash = chopRoughness(chopLevel) * 0.08;
+      rows.push({ d: "", opacity: wash });
+    }
+
+    return rows;
+  }, [chopLevel, zone, phase]);
+
+  return (
+    <g clipPath="url(#pool-clip)">
+      {zone?.whole && chopRoughness(chopLevel) <= 0.05 ? (
+        <rect x={0} y={0} width={VIEW_W} height={VIEW_H} fill={INK} opacity={0.03} />
       ) : null}
-      <line
-        x1={0}
-        y1={tail}
-        x2={0}
-        y2={tip + head * 0.55}
-        stroke={meanColour}
-        strokeWidth={meanWidth}
-        strokeLinecap="round"
-      />
-      <path
-        d={`M 0 ${tip.toFixed(1)} L ${(-wing).toFixed(1)} ${(tip + head).toFixed(1)} H ${wing.toFixed(1)} Z`}
-        fill={meanColour}
-      />
+      <g className="plan-chop-lines">
+        {lines.map((row, i) =>
+          row.d ? (
+            <path key={i} d={row.d} fill="none" stroke={INK} strokeWidth="0.85" opacity={row.opacity} />
+          ) : null,
+        )}
+      </g>
     </g>
   );
 }
@@ -112,12 +175,16 @@ function PlanDrawing({
   gustMs,
   submerged,
   zone,
+  chopLevel,
+  phase,
 }: {
   travel: number | null;
   avgMs: number | null;
   gustMs: number | null;
   submerged: boolean;
   zone: QuietZone | null;
+  chopLevel: ChopLevel;
+  phase: number;
 }) {
   const layout = planLayout(VIEW_W, VIEW_H, PAD);
   const corners = poolPlanCorners();
@@ -128,25 +195,12 @@ function PlanDrawing({
   const mid = planProject(poolPlanCentroid(), layout);
   const label = (point: PlanPoint) => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
   const wall = `M ${label(sw)} L ${label(nw)} L ${label(ne)} L ${label(se)}`;
-  const quietAt = zone
-    ? planProject(polygonCentroid(zone.polygon), layout)
-    : null;
-  const quietLabel =
-    quietAt == null
-      ? null
-      : {
-          x: quietAt.x,
-          y:
-            Math.hypot(quietAt.x - mid.x, quietAt.y - mid.y) < 26
-              ? Math.min(sw.y - 18, quietAt.y + 34)
-              : quietAt.y,
-        };
+  const poolClip = poolInteriorPath({ nw, ne, se, sw });
 
   const aria = [
-    "Schematic plan of the tidal pool, north up. The sea is to the north. Side walls and the seaward wall make a U. The beach and the cliff are to the south.",
-    submerged ? "The wall is under the water." : "The wall crest is showing.",
-    zone ? "A hatched patch is a rough guess at quieter water." : "",
-    travel != null ? "The arrow points the way the wind is blowing. The solid shaft is the average and the lighter shaft is the gust." : "",
+    "Plan of the tidal pool. Sea to the north, beach to the south.",
+    submerged ? "The wall is under the water." : "",
+    travel != null ? "Wind arrow and speed." : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -154,85 +208,39 @@ function PlanDrawing({
   return (
     <svg className="plan-svg" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label={aria}>
       <defs>
-        <pattern id="quiet-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(36)">
-          <line x1="0" y1="0" x2="0" y2="7" stroke={INK} strokeWidth="1" opacity="0.55" />
-        </pattern>
+        <clipPath id="pool-clip">
+          <path d={poolClip} />
+        </clipPath>
       </defs>
       <rect width={VIEW_W} height={VIEW_H} fill={PAPER} />
-      <text x={VIEW_W / 2} y={16} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT}>
-        N
+      <text x={VIEW_W / 2} y={nw.y - 18} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT} letterSpacing="0.14em">
+        Sea
       </text>
-      <line x1={VIEW_W / 2} x2={VIEW_W / 2} y1={19} y2={24} stroke={INK} strokeWidth="1" />
-      <text
-        x={VIEW_W / 2}
-        y={nw.y - 24}
-        textAnchor="middle"
-        fill={INK}
-        fontSize="14"
-        fontFamily={FONT}
-        letterSpacing="0.12em"
-      >
-        sea
-      </text>
-      <path d={seaPath(nw.y - 14, nw.x - 4, ne.x + 4, 0.4)} fill="none" stroke={INK} strokeWidth="1.15" opacity="0.55" />
-      <path d={seaPath(nw.y - 8, nw.x + 8, ne.x - 6, 1.7)} fill="none" stroke={INK} strokeWidth="1" opacity="0.4" />
+      <path d={seaPath(nw.y - 10, nw.x - 2, ne.x + 2, phase * 0.4)} fill="none" stroke={INK} strokeWidth="1" opacity="0.4" />
       {submerged ? (
         <path
           className="wall-wash"
-          d={`M ${label(sw)} L ${label(nw)} L ${nw.x.toFixed(1)} ${(nw.y - 10).toFixed(1)} L ${ne.x.toFixed(1)} ${(ne.y - 10).toFixed(1)} L ${label(ne)} L ${label(se)} Z`}
+          d={`M ${label(sw)} L ${label(nw)} L ${nw.x.toFixed(1)} ${(nw.y - 8).toFixed(1)} L ${ne.x.toFixed(1)} ${(ne.y - 8).toFixed(1)} L ${label(ne)} L ${label(se)} Z`}
           fill={WATER}
-          opacity={0.2}
+          opacity={0.16}
         />
       ) : null}
-      {zone ? <QuietPatch zone={zone} layout={layout} /> : null}
+      <RoughnessField chopLevel={chopLevel} zone={zone} phase={phase} />
       <path
         className="plan-wall"
         data-wall={submerged ? "under" : "solid"}
         d={wall}
         fill="none"
         stroke={INK}
-        strokeWidth={submerged ? 4.2 : 6.2}
+        strokeWidth={submerged ? 4 : 6}
         strokeLinejoin="round"
         strokeLinecap="butt"
         strokeDasharray={submerged ? "6 4.5" : undefined}
-        opacity={submerged ? 0.55 : 1}
+        opacity={submerged ? 0.5 : 1}
       />
-      <path d={`M ${label(sw)} L ${label(se)}`} fill="none" stroke={INK} strokeWidth="1.15" opacity="0.8" />
-      <text
-        x={(nw.x + ne.x) / 2}
-        y={(nw.y + ne.y) / 2 + 16}
-        textAnchor="middle"
-        fill={submerged ? INK_SOFT : INK}
-        fontSize="13"
-        fontFamily={FONT}
-        letterSpacing="0.08em"
-        stroke={PAPER}
-        strokeWidth="3"
-        paintOrder="stroke"
-      >
-        {submerged ? "wall under" : "wall"}
-      </text>
-      {quietLabel ? (
-        <text
-          className="quiet-label"
-          x={quietLabel.x}
-          y={quietLabel.y}
-          textAnchor="middle"
-          fill={INK_SOFT}
-          fontSize="11"
-          fontFamily={FONT}
-          stroke={PAPER}
-          strokeWidth="3"
-          paintOrder="stroke"
-        >
-          {QUIET_LABEL}
-        </text>
-      ) : null}
-      <text x={VIEW_W / 2} y={sw.y + 20} textAnchor="middle" fill={INK} fontSize="14" fontFamily={FONT} letterSpacing="0.12em">
-        beach
-      </text>
-      <text x={VIEW_W / 2} y={sw.y + 36} textAnchor="middle" fill={INK_SOFT} fontSize="11" fontFamily={FONT} letterSpacing="0.12em">
-        cliff
+      <path d={`M ${label(sw)} L ${label(se)}`} fill="none" stroke={INK} strokeWidth="1" opacity="0.65" />
+      <text x={VIEW_W / 2} y={sw.y + 22} textAnchor="middle" fill={INK} fontSize="13" fontFamily={FONT} letterSpacing="0.14em">
+        Beach
       </text>
       {travel != null && avgMs != null ? (
         <WindGlyph at={mid} travel={travel} avgMs={avgMs} gustMs={gustMs} />
@@ -241,9 +249,43 @@ function PlanDrawing({
   );
 }
 
-export function PlanView({ wind, submerged }: { wind: WindFrame | null; submerged: boolean }) {
+export function PlanView({
+  wind,
+  submerged,
+  chopLevel,
+}: {
+  wind: WindFrame | null;
+  submerged: boolean;
+  chopLevel: ChopLevel;
+}) {
+  const [phase, setPhase] = useState(0);
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setReduced(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (reduced) return;
+    let frame = 0;
+    let stop = false;
+    const tick = (now: number) => {
+      if (stop) return;
+      setPhase(now / 1000);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      stop = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [reduced]);
+
   const travel = wind?.hasDirection ? downwindDegrees(wind.directionDeg) : null;
-  const towards = travel == null ? null : compassFromDegrees(travel).word;
   const avgMs = wind ? Number(wind.avgMs) : null;
   const gustMs = wind?.gustMs != null ? Number(wind.gustMs) : null;
   const zone =
@@ -255,6 +297,7 @@ export function PlanView({ wind, submerged }: { wind: WindFrame | null; submerge
           compass: wind.hasDirection ? wind.compass : null,
         })
       : null;
+
   return (
     <figure
       className="plan-card"
@@ -264,6 +307,7 @@ export function PlanView({ wind, submerged }: { wind: WindFrame | null; submerge
       data-wind-travel={travel ?? undefined}
       data-wall={submerged ? "under" : "solid"}
       data-quiet={zone?.whole ? "whole" : zone ? "lee" : "off"}
+      data-chop={chopLevel}
     >
       <PlanDrawing
         travel={travel}
@@ -271,34 +315,9 @@ export function PlanView({ wind, submerged }: { wind: WindFrame | null; submerge
         gustMs={gustMs != null && Number.isFinite(gustMs) ? gustMs : null}
         submerged={submerged}
         zone={zone}
+        chopLevel={chopLevel}
+        phase={reduced ? 0 : phase}
       />
-      <figcaption className="plan-copy">
-        <p className="plan-orient">North is the sea and the wall. South is the beach.</p>
-        {wind ? (
-          <>
-            {wind.hasDirection ? (
-              <>
-                <p className="wind-from">from the {wind.word}</p>
-                <p className="wind-towards">towards the {towards}</p>
-              </>
-            ) : (
-              <p className="wind-from">direction unknown</p>
-            )}
-            <p className="wind-nums wind-avg">
-              {wind.avgMs} m/s · {wind.periodPhrase}
-              {wind.stale ? " · saved" : ""}
-            </p>
-            {wind.gustMs ? <p className="wind-nums wind-gust">gusts {wind.gustMs} m/s</p> : null}
-            <p className="wind-cliff">{wind.cliff}</p>
-          </>
-        ) : (
-          <p className="wind-from">Wind quiet</p>
-        )}
-        <p className="plan-note">
-          Schematic. <a href={LINKS.listing}>Listing</a> lengths, not a survey — about 91 m on the wall, 168 m at the beach.
-          The side walls close the east and the west.
-        </p>
-      </figcaption>
     </figure>
   );
 }

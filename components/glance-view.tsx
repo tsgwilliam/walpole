@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { cliffTemperLine } from "@/lib/chop";
+import type { ChopLevel } from "@/lib/chop";
 import { compassFromDegrees } from "@/lib/compass";
 import {
   glanceAt,
@@ -12,7 +13,6 @@ import {
   type PlanWindCheck,
   type WindFrame,
 } from "@/lib/glance-at";
-import { formatLondonDate } from "@/lib/time";
 import { LiveSection } from "./live-section";
 import { PlanView } from "./plan-view";
 import { TideChart } from "./tide-chart";
@@ -58,15 +58,17 @@ export function GlanceView({
       end: new Date(start + span * 60_000).toISOString(),
     }));
   }, [prepared]);
+  const chopLevel = (frame.section?.chopLevel ?? 2) as ChopLevel;
+  const tideEvents = source.tide?.events ?? [];
 
   return (
     <div
-      className="glance-col"
+      className="glance-col glance-field"
       id="reading"
       data-glance-minutes={frame.minutesAhead}
       data-glance-mode={frame.mode ?? ""}
       data-sea-m={frame.section?.seaMetresCD ?? ""}
-      data-chop={frame.section?.chopLevel ?? ""}
+      data-chop={chopLevel}
       data-demo={demoLabel ? "storm" : undefined}
     >
       {demoLabel ? (
@@ -103,29 +105,25 @@ export function GlanceView({
         />
       </div>
 
-      <PlanView wind={windForPlan(frame.wind, planWind)} submerged={frame.mode === "sea"} />
+      <PlanView
+        wind={windForPlan(frame.wind, planWind)}
+        submerged={frame.mode === "sea"}
+        chopLevel={chopLevel}
+      />
 
-      <div className="mode-block">
-        <h1 className="now-headline">{frame.headline}</h1>
-        {frame.remaining ? <p className="mode-remain">{frame.remaining}</p> : null}
-      </div>
-
-      <p className="facts-strip">
-        <span>{frame.tideFact}</span>
-        <span>{frame.airFact}</span>
-      </p>
+      <p className="mode-stamp">{frame.headline}</p>
 
       <section className="tide-block">
-        <div className="tide-head">
-          <h2 className="sec-title">Tide</h2>
-          <p className="tide-day">{formatLondonDate(new Date(frame.at))}</p>
-        </div>
-        <TideChart points={prepared.pointsIso} now={frame.at} windows={tideWindows} />
-        {frame.extrema ? <p className="tide-extrema">{frame.extrema}</p> : null}
+        <TideChart
+          points={prepared.pointsIso}
+          now={frame.at}
+          windows={tideWindows}
+          events={tideEvents}
+          wallTopMetresCD={source.settings.wallTopMetresCD}
+        />
       </section>
 
-      <section>
-        <h2 className="sec-title">Water quality</h2>
+      <section className="water-block">
         {water.lines.map((line) => (
           <p key={line} className={water.warn ? "water-line warn" : "water-line"}>
             {line}
