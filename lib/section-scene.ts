@@ -52,6 +52,12 @@ export type ResolvedSection = {
   chopLevel: ChopLevel;
   poolBias: number;
   seaBias: number;
+  /**
+   * Schematic amplitude of wind chop on held water (pool and falling).
+   * The sea side already has marine swell; this is the same chop pilot
+   * stretched so the pool surface can be read on its own.
+   */
+  heldAmp: number;
 };
 
 const CANONICAL: Record<PictureMode, { sea: number; amp: number; period: number }> = {
@@ -153,6 +159,52 @@ export function chopMotion(level: ChopLevel, bias: number) {
   };
 }
 
+/**
+ * Base ripple on held water, before shelter and a little extra from the
+ * mean wind. Level 1 stays nearly flat. Level 5 is a rough surface that
+ * still has to live under the crest.
+ */
+const HELD_AMP: Record<ChopLevel, number> = {
+  1: 0.005,
+  2: 0.03,
+  3: 0.072,
+  4: 0.108,
+  5: 0.142,
+};
+
+/** Wind chop amplitude for the held pool surface. `bias` is the pool side of `chopBias`. */
+export function heldSurfaceAmp(level: ChopLevel, bias: number, windMph: number | null): number {
+  const mph = windMph != null && Number.isFinite(windMph) ? Math.max(0, windMph) : 0;
+  const boost = 1 + Math.min(0.48, Math.max(0, mph - 14) / 64);
+  const shelter = Number.isFinite(bias) ? Math.max(0, bias) : 1;
+  return HELD_AMP[level] * boost * shelter;
+}
+
+/** Same two-wave ripple the sea strokes use. `amp` is already in schematic units. */
+export function surfaceRipple(u: number, timeS: number, level: ChopLevel, amp: number): number {
+  const motion = chopMotion(level, 1);
+  const a = Math.sin(u * (3.2 + level * 0.55) + timeS * motion.speed);
+  const b = Math.sin(u * (6.8 + level * 0.9) - timeS * motion.speed * 1.33 + 0.6);
+  const mix = motion.wobble * 0.28;
+  return (amp * (a + mix * b)) / (1 + mix);
+}
+
+/**
+ * Held-water ripple. Crests are the smaller half so a gale stays under the
+ * wall; the troughs carry the roughness.
+ */
+export function heldRipple(u: number, timeS: number, level: ChopLevel, amp: number): number {
+  const raw = surfaceRipple(u, timeS, level, amp);
+  return raw > 0 ? raw * 0.42 : raw;
+}
+
+/** Ink cap for held water. Crest of the wall is 1. */
+export const HELD_SURFACE_CAP = 0.972;
+
+export function heldSurface(still: number, ripple: number): number {
+  return Math.min(HELD_SURFACE_CAP, still + ripple);
+}
+
 function clampSea(schematic: number): number {
   return Math.min(1.38, Math.max(-0.1, schematic));
 }
@@ -177,6 +229,7 @@ export function resolveMode(input: SectionInput): PictureMode {
 export function resolveSection(input: SectionInput): ResolvedSection {
   const mode = resolveMode(input);
   const bias = chopBias(input.compass);
+  const heldAmp = heldSurfaceAmp(input.chopLevel, bias.pool, input.windMph);
   if (input.mode) {
     const canon = CANONICAL[input.mode];
     return {
@@ -188,6 +241,7 @@ export function resolveSection(input: SectionInput): ResolvedSection {
       chopLevel: input.chopLevel,
       poolBias: bias.pool,
       seaBias: bias.sea,
+      heldAmp,
     };
   }
   const sea =
@@ -211,6 +265,7 @@ export function resolveSection(input: SectionInput): ResolvedSection {
     chopLevel: input.chopLevel,
     poolBias: bias.pool,
     seaBias: bias.sea,
+    heldAmp,
   };
 }
 

@@ -9,7 +9,7 @@ import {
   type PlanPoint,
 } from "@/lib/pool-plan";
 import { QUIET_LABEL, polygonCentroid, quieterZone, type QuietZone } from "@/lib/shelter";
-import { windGlyphLengths } from "@/lib/wind-glyph";
+import { windGlyphMark } from "@/lib/wind-glyph";
 
 const VIEW_W = 300;
 const VIEW_H = 332;
@@ -17,7 +17,6 @@ const PAD = { l: 14, r: 14, t: 64, b: 52 };
 const PAPER = "#f4efe4";
 const INK = "#1c1915";
 const INK_SOFT = "#5e584e";
-const CORAL = "#c44736";
 const WATER = "#2f74a3";
 
 const FONT = "var(--font-plex), ui-monospace, monospace";
@@ -60,34 +59,49 @@ function WindGlyph({
   avgMs: number;
   gustMs: number | null;
 }) {
-  const { mean, gust } = windGlyphLengths(avgMs, gustMs);
+  const mark = windGlyphMark(avgMs, gustMs);
+  const { mean, gust, meanWidth, gustWidth, head, meanColour, gustColour } = mark;
   const tail = mean * 0.45;
   const tip = tail - mean;
   const gustTip = tip - (gust - mean);
-  const head = 8;
+  const wing = head * 0.68;
   const showGust = gust > mean + 0.5;
   return (
     <g
       className="wind-glyph"
       data-wind-mean-px={mean.toFixed(1)}
       data-wind-gust-px={gust.toFixed(1)}
+      data-wind-width={meanWidth.toFixed(2)}
+      data-wind-colour={meanColour}
+      data-wind-gust-colour={gustColour}
       transform={`translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(${travel})`}
     >
       {showGust ? (
         <g className="wind-gust-mark">
-          <line x1={0} y1={tail} x2={0} y2={gustTip + 6} stroke={CORAL} strokeWidth={1.15} />
+          <line x1={0} y1={tail} x2={0} y2={gustTip + head * 0.7} stroke={gustColour} strokeWidth={gustWidth} />
           <path
-            d={`M ${-4.4} ${(gustTip + 7).toFixed(1)} L 0 ${gustTip.toFixed(1)} L ${4.4} ${(gustTip + 7).toFixed(1)}`}
+            d={`M ${(-wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)} L 0 ${gustTip.toFixed(1)} L ${(wing * 0.72).toFixed(1)} ${(gustTip + head * 0.82).toFixed(1)}`}
             fill="none"
-            stroke={CORAL}
-            strokeWidth={1.15}
+            stroke={gustColour}
+            strokeWidth={gustWidth}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
         </g>
       ) : null}
-      <line x1={0} y1={tail} x2={0} y2={tip + head * 0.55} stroke={CORAL} strokeWidth={2.15} strokeLinecap="round" />
-      <path d={`M 0 ${tip.toFixed(1)} L ${-5.4} ${(tip + head).toFixed(1)} H ${5.4} Z`} fill={CORAL} />
+      <line
+        x1={0}
+        y1={tail}
+        x2={0}
+        y2={tip + head * 0.55}
+        stroke={meanColour}
+        strokeWidth={meanWidth}
+        strokeLinecap="round"
+      />
+      <path
+        d={`M 0 ${tip.toFixed(1)} L ${(-wing).toFixed(1)} ${(tip + head).toFixed(1)} H ${wing.toFixed(1)} Z`}
+        fill={meanColour}
+      />
     </g>
   );
 }

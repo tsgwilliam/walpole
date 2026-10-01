@@ -6,7 +6,10 @@ import {
   chalkSchematic,
   chopMotion,
   frameLevels,
+  heldRipple,
+  heldSurface,
   resolveSection,
+  surfaceRipple,
   swellOffset,
   waterlineU,
   type PictureMode,
@@ -75,11 +78,7 @@ function drawRuns(
 }
 
 function chopOffset(u: number, timeS: number, level: SectionInput["chopLevel"], bias: number): number {
-  const motion = chopMotion(level, bias);
-  const a = Math.sin(u * (3.2 + level * 0.55) + timeS * motion.speed);
-  const b = Math.sin(u * (6.8 + level * 0.9) - timeS * motion.speed * 1.33 + 0.6);
-  const mix = motion.wobble * 0.28;
-  return (motion.amp * (a + mix * b)) / (1 + mix);
+  return surfaceRipple(u, timeS, level, chopMotion(level, bias).amp);
 }
 
 function biasAt(u: number, pool: number, sea: number): number {
@@ -162,7 +161,12 @@ function paint(
       const ampScale = u < 7.5 ? 0.5 + 0.5 * (u / 7.5) : 1;
       return section.seaDraw + swellOffset(u, timeS, section.waveAmp * ampScale, section.wavePeriodS) + chop;
     }
-    if (u < 7.5) return frame.pool + chop;
+    if (u < 7.5) {
+      if (section.mode === "pool" || section.mode === "falling") {
+        return heldSurface(frame.pool, heldRipple(u, timeS, section.chopLevel, section.heldAmp));
+      }
+      return frame.pool + chop;
+    }
     let sea = section.seaDraw + swellOffset(u, timeS, section.waveAmp, section.wavePeriodS) + chop;
     if (section.mode === "pool" || section.mode === "falling") sea = Math.min(sea, 0.975);
     return sea;
@@ -252,9 +256,12 @@ export function SectionCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef(input);
+  const repaintStillRef = useRef<(() => void) | null>(null);
+  const heldAmp = resolveSection(input).heldAmp;
 
   useEffect(() => {
     inputRef.current = input;
+    repaintStillRef.current?.();
   }, [input]);
 
   useEffect(() => {
@@ -268,15 +275,12 @@ export function SectionCanvas({
     let grain: HTMLCanvasElement | null = null;
     let grainW = 0;
     let grainH = 0;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    const tick = (now: number) => {
-      if (stopped) return;
+    const draw = (timeS: number) => {
       const cssW = canvas.clientWidth;
       const cssH = canvas.clientHeight;
-      if (cssW < 8 || cssH < 8) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
+      if (cssW < 8 || cssH < 8) return false;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const bw = Math.max(1, Math.round(cssW * dpr));
       const bh = Math.max(1, Math.round(cssH * dpr));
@@ -289,14 +293,45 @@ export function SectionCanvas({
         grainW = bw;
         grainH = bh;
       }
-      paint(ctx, bw, bh, dpr, inputRef.current, (now - t0) / 1000, grain);
+      paint(ctx, bw, bh, dpr, inputRef.current, timeS, grain);
+      return true;
+    };
+
+    const tick = (now: number) => {
+      if (stopped || media.matches) return;
+      if (!draw((now - t0) / 1000)) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
       frame = requestAnimationFrame(tick);
     };
 
-    frame = requestAnimationFrame(tick);
+    const start = () => {
+      cancelAnimationFrame(frame);
+      if (media.matches) {
+        draw(0);
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+
+    repaintStillRef.current = () => {
+      if (!stopped && media.matches) draw(0);
+    };
+
+    const onMotion = () => start();
+    media.addEventListener("change", onMotion);
+    const resize = new ResizeObserver(() => {
+      if (media.matches) draw(0);
+    });
+    resize.observe(canvas);
+    start();
     return () => {
       stopped = true;
       cancelAnimationFrame(frame);
+      media.removeEventListener("change", onMotion);
+      resize.disconnect();
+      repaintStillRef.current = null;
     };
   }, []);
 
@@ -307,6 +342,8 @@ export function SectionCanvas({
       role="img"
       aria-label={label}
       data-section-mode={mode}
+      data-held-amp={heldAmp.toFixed(3)}
+      data-motion="section"
     />
   );
 }
