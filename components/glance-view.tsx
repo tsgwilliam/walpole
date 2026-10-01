@@ -2,26 +2,11 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { downwindDegrees } from "@/lib/compass";
 import { glanceAt, HORIZON_MINUTES, prepareGlance, type GlanceSource } from "@/lib/glance-at";
+import { formatLondonDate } from "@/lib/time";
 import { LiveSection } from "./live-section";
-
-function WindRose({ directionDeg }: { directionDeg: number }) {
-  const travel = downwindDegrees(directionDeg);
-  return (
-    <svg className="wind-rose" viewBox="0 0 72 72" aria-hidden="true">
-      <circle cx="36" cy="38" r="26" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M36 16 V20 M36 56 V60 M14 38 H18 M54 38 H58" fill="none" stroke="currentColor" strokeWidth="1.1" />
-      <text x="36" y="12" textAnchor="middle">
-        N
-      </text>
-      <g transform={`rotate(${travel} 36 38)`}>
-        <path d="M36 50 V26" fill="none" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M36 22 L29.5 34 H42.5 Z" fill="currentColor" />
-      </g>
-    </svg>
-  );
-}
+import { PlanView } from "./plan-view";
+import { TideChart } from "./tide-chart";
 
 export function GlanceView({
   source,
@@ -35,7 +20,14 @@ export function GlanceView({
   const prepared = useMemo(() => prepareGlance(source), [source]);
   const [minutes, setMinutes] = useState(initialMinutes);
   const frame = useMemo(() => glanceAt(prepared, minutes), [prepared, minutes]);
-  const wind = frame.wind;
+  const tideWindows = useMemo(() => {
+    const span = prepared.source.settings.waterfallWindowMinutes;
+    if (!(span > 0)) return [];
+    return prepared.crossings.map((start) => ({
+      start: new Date(start).toISOString(),
+      end: new Date(start + span * 60_000).toISOString(),
+    }));
+  }, [prepared]);
 
   return (
     <div
@@ -75,6 +67,8 @@ export function GlanceView({
         />
       </div>
 
+      <PlanView wind={frame.wind} />
+
       <div className="mode-block">
         <h1 className="now-headline">{frame.headline}</h1>
         {frame.remaining ? <p className="mode-remain">{frame.remaining}</p> : null}
@@ -83,25 +77,16 @@ export function GlanceView({
       <p className="facts-strip">
         <span>{frame.tideFact}</span>
         <span>{frame.airFact}</span>
-        {wind ? null : <span>wind quiet</span>}
       </p>
 
-      {wind ? (
-        <div className="wind-card" data-wind-from={wind.compass} data-wind-ms={wind.avgMs}>
-          {wind.hasDirection ? <WindRose directionDeg={wind.directionDeg} /> : <div className="wind-rose wind-rose-empty" aria-hidden="true" />}
-          <div className="wind-copy">
-            <p className="wind-from">{wind.hasDirection ? `from the ${wind.word}` : "direction unknown"}</p>
-            <p className="wind-nums wind-avg">
-              {wind.avgMs} m/s · {wind.periodPhrase}
-              {wind.stale ? " · saved" : ""}
-            </p>
-            {wind.gustMs ? <p className="wind-nums">gusts {wind.gustMs} m/s</p> : null}
-          </div>
-          <p className="wind-cliff">{wind.cliff}</p>
+      <section className="tide-block">
+        <div className="tide-head">
+          <h2 className="sec-title">Tide</h2>
+          <p className="tide-day">{formatLondonDate(new Date(frame.at))}</p>
         </div>
-      ) : null}
-
-      {frame.extrema ? <p className="tide-extrema">{frame.extrema}</p> : null}
+        <TideChart points={prepared.pointsIso} now={frame.at} windows={tideWindows} />
+        {frame.extrema ? <p className="tide-extrema">{frame.extrema}</p> : null}
+      </section>
 
       <section>
         <h2 className="sec-title">Water quality</h2>

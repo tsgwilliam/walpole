@@ -561,6 +561,50 @@
   font-size: 13px;
   line-height: 1.45;
 }
+.tide-block { margin-top: 16px; }
+.tide-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.tide-head .sec-title { margin: 0 0 6px; }
+.tide-day {
+  margin: 0 0 6px;
+  font-family: var(--font-plex), ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.tide-wave { width: 100%; height: auto; display: block; }
+.plan-card {
+  display: grid;
+  grid-template-columns: minmax(9.5rem, 1.15fr) minmax(8.75rem, 0.85fr);
+  column-gap: 14px;
+  row-gap: 4px;
+  align-items: center;
+  margin: 14px 0 0;
+}
+.plan-svg { width: 100%; height: auto; display: block; }
+.plan-copy { display: grid; gap: 2px; align-content: center; margin: 0; }
+.plan-orient {
+  margin: 0 0 6px;
+  font-family: var(--font-plex), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+.plan-note {
+  margin: 8px 0 0;
+  font-family: var(--font-plex), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+.plan-note a { color: inherit; }
+@media (min-width: 840px) {
+  .plan-card { grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); }
+}
 .timeline { margin-top: 12px; }
 .timeline-scale {
   display: grid;
@@ -616,40 +660,14 @@
   border-radius: 50%;
   background: var(--ink);
 }
-.wind-card {
-  display: grid;
-  grid-template-columns: 4.75rem minmax(0, 1fr);
-  column-gap: 12px;
-  row-gap: 2px;
-  align-items: center;
-  margin-top: 14px;
-}
-.wind-rose {
-  width: 4.75rem;
-  height: 4.75rem;
-  grid-column: 1;
-  grid-row: 1;
-  color: var(--ink);
-}
-.wind-rose text {
-  font-family: var(--font-plex), ui-monospace, monospace;
-  font-size: 9px;
-  fill: currentColor;
-}
-.wind-rose-empty {
-  border: 1px solid var(--ink);
-  border-radius: 50%;
-  width: 3.4rem;
-  height: 3.4rem;
-  margin: 0.6rem;
-}
-.wind-copy { grid-column: 2; grid-row: 1; display: grid; gap: 1px; align-content: center; }
-.wind-from {
+.wind-from,
+.wind-towards {
   margin: 0;
   font-family: var(--font-instrument), sans-serif;
   font-size: 16px;
-  line-height: 1.2;
+  line-height: 1.25;
 }
+.wind-towards { font-size: 15px; }
 .wind-nums {
   margin: 0;
   font-family: var(--font-plex), ui-monospace, monospace;
@@ -658,7 +676,6 @@
 }
 .wind-avg { font-size: 15px; }
 .wind-cliff {
-  grid-column: 1 / -1;
   margin: 6px 0 0;
   font-family: var(--font-plex), ui-monospace, monospace;
   font-size: 12px;
