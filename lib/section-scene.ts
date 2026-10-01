@@ -1,5 +1,5 @@
 import type { ChopLevel } from "./chop";
-import { SOFT_BEACH, WORKING_WALL } from "./geography";
+import { WORKING_WALL } from "./geography";
 
 /**
  * Schematic N–S section. Crest is 1. The chalk floor is 0.
@@ -8,23 +8,16 @@ import { SOFT_BEACH, WORKING_WALL } from "./geography";
  * wall in geography (crest minus inferred chalk). Horizontal ratios are
  * beach : pool : wall : sea. Wall thickness is exaggerated.
  *
- * The beach is a short rise, then a flat floor. A surveyed 12% over 35 m
- * would leave this frame, so the ink rise is capped. It is not a wedge
- * running down through the pool.
+ * Beach ink is a gradual quadratic slope from the landward lip down to the
+ * pool floor at the wall face — not a cliff step and flat shelf.
  */
 export const RATIO = { beach: 2.5, pool: 5, wall: 0.6, sea: 3.5 } as const;
 export const RATIO_SUM = RATIO.beach + RATIO.pool + RATIO.wall + RATIO.sea;
 export const HELD_FULL = 0.93;
 export const WALL_HEIGHT_M = WORKING_WALL.wallAboveChalkM;
 export const WALL_FACE_U = RATIO.beach + RATIO.pool + RATIO.wall;
-
-const CLIFF_RUN = 0.28;
-
-/** Page-fitted top of the soft beach, in schematic units. Crest is 1. */
-function inkBeachTop(): number {
-  const rise = (SOFT_BEACH.grade * SOFT_BEACH.runM) / WALL_HEIGHT_M;
-  return Math.min(1.12, 0.7 + rise * 0.19);
-}
+export const WALL_U0 = RATIO.beach + RATIO.pool;
+export const WALL_U1 = WALL_U0 + RATIO.wall;
 
 export type PictureMode = "pool" | "overflow" | "sea" | "falling";
 
@@ -70,26 +63,15 @@ const CANONICAL: Record<PictureMode, { sea: number; amp: number; period: number 
 const ONSHORE = new Set(["N", "NNE", "NE", "ENE", "NW", "NNW", "WNW"]);
 const SHELTER = new Set(["S", "SSE", "SSW", "SW", "WSW"]);
 
-/**
- * Chalk profile. A short cliff step, a beach down to the landward lip,
- * a flat pool floor, then a slight drop on the foreshore.
- */
+/** Soft chalk profile. Higher inland, easing to the floor at the wall, then a slight drop seaward. */
 export function chalkSchematic(u: number): number {
-  const lip = RATIO.beach;
-  const sea0 = RATIO.beach + RATIO.pool + RATIO.wall;
-  const beachTop = inkBeachTop();
-  const cliffTop = Math.min(1.42, beachTop + 0.26);
-  if (u <= 0) return cliffTop;
-  if (u < CLIFF_RUN) {
-    const t = u / CLIFF_RUN;
-    return cliffTop + (beachTop - cliffTop) * t;
+  if (u <= 0) return 1.22;
+  if (u < WALL_U0) {
+    const h = 1.22 - 0.339 * u + 0.0235 * u * u;
+    return h < 0 ? 0 : h;
   }
-  if (u < lip) {
-    const t = (u - CLIFF_RUN) / (lip - CLIFF_RUN);
-    return beachTop * (1 - t);
-  }
-  if (u <= sea0) return 0;
-  const t = Math.min(1, (u - sea0) / (RATIO_SUM - sea0));
+  if (u <= WALL_U1) return 0;
+  const t = Math.min(1, (u - WALL_U1) / (RATIO_SUM - WALL_U1));
   return -0.08 * t;
 }
 

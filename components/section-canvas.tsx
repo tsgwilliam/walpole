@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import {
   RATIO_SUM,
+  WALL_U0,
+  WALL_U1,
   chalkSchematic,
   chopMotion,
   frameLevels,
@@ -82,9 +84,9 @@ function chopOffset(u: number, timeS: number, level: SectionInput["chopLevel"], 
 }
 
 function biasAt(u: number, pool: number, sea: number): number {
-  if (u <= 7.5) return pool;
-  if (u >= 8.1) return sea;
-  return pool + ((sea - pool) * (u - 7.5)) / 0.6;
+  if (u <= WALL_U0) return pool;
+  if (u >= WALL_U1) return sea;
+  return pool + ((sea - pool) * (u - WALL_U0)) / (WALL_U1 - WALL_U0);
 }
 
 function makeGrain(w: number, h: number): HTMLCanvasElement {
@@ -149,19 +151,19 @@ function paint(
   ctx.drawImage(grain, 0, 0, bw, bh);
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
 
-  stroke(ctx, chalkPoints(0, 7.5, 0.06), 0.8, 0.16);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0.06), 0.8, 0.16);
-  stroke(ctx, chalkPoints(0, 7.5, 0.12), 0.7, 0.09);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0.12), 0.7, 0.09);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0.06), 0.8, 0.16);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0.06), 0.8, 0.16);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0.12), 0.7, 0.09);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0.12), 0.7, 0.09);
 
   const surface = (u: number) => {
     const bias = biasAt(u, section.poolBias, section.seaBias);
     const chop = chopOffset(u, timeS, section.chopLevel, bias);
     if (section.mode === "sea") {
-      const ampScale = u < 7.5 ? 0.5 + 0.5 * (u / 7.5) : 1;
+      const ampScale = u < WALL_U0 ? 0.5 + 0.5 * (u / WALL_U0) : 1;
       return section.seaDraw + swellOffset(u, timeS, section.waveAmp * ampScale, section.wavePeriodS) + chop;
     }
-    if (u < 7.5) {
+    if (u < WALL_U0) {
       if (section.mode === "pool" || section.mode === "falling") {
         return heldSurface(frame.pool, heldRipple(u, timeS, section.chopLevel, section.heldAmp));
       }
@@ -186,14 +188,29 @@ function paint(
     }
   };
 
-  if (section.mode === "sea") band(shore, RATIO_SUM);
-  else {
-    band(Math.min(shore, 7.5), 7.5);
-    band(8.1, RATIO_SUM);
+  band(Math.min(shore, WALL_U0), WALL_U0);
+  band(WALL_U1, RATIO_SUM);
+
+  const wallX = xOf(WALL_U0);
+  const wallW = xOf(WALL_U1) - wallX;
+  const wallY = yOf(1);
+  const wallH = yOf(-0.015) - wallY;
+
+  ctx.fillStyle = PAPER;
+  ctx.globalAlpha = 1;
+  ctx.fillRect(wallX, wallY, wallW, wallH);
+
+  if (section.mode === "sea") {
+    drawRuns(ctx, WALL_U0, WALL_U1, (u) => yOf(surface(u)), 1.35, 0.88);
+    for (let i = 1; i <= motion.lines; i++) {
+      const depth = 4 + i * 4;
+      const alpha = Math.max(0.08, 0.38 - i * 0.06);
+      drawRuns(ctx, WALL_U0, WALL_U1, (u) => yOf(surface(u)) + depth, 0.75, alpha);
+    }
   }
 
-  stroke(ctx, chalkPoints(0, 7.5, 0), 1.75, 0.95);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0), 1.75, 0.95);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0), 1.75, 0.95);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0), 1.75, 0.95);
 
   const dryUntil = shore;
   ctx.strokeStyle = INK;
@@ -219,25 +236,21 @@ function paint(
     ctx.lineWidth = 0.7;
     ctx.globalAlpha = 0.42 + frame.sheet * 0.35;
     ctx.beginPath();
-    ctx.moveTo(xOf(8.1), Math.min(ySea, yCrest));
-    ctx.lineTo(xOf(7.5), yCrest + 0.3);
+    ctx.moveTo(xOf(WALL_U1), Math.min(ySea, yCrest));
+    ctx.lineTo(xOf(WALL_U0), yCrest + 0.3);
     ctx.stroke();
     for (let i = 0; i < lines; i++) {
       const y0 = yCrest + 0.8 + i * 2.6;
       const y1 = y0 + 2.2;
-      const x1 = xOf(7.5) - reach * (0.78 + i * 0.06);
+      const x1 = xOf(WALL_U0) - reach * (0.78 + i * 0.06);
       ctx.beginPath();
-      ctx.moveTo(xOf(7.5), y0);
-      ctx.quadraticCurveTo(xOf(7.5) - reach * 0.4, y0 + 1.6, x1, Math.min(y1, yPool + 1.2));
+      ctx.moveTo(xOf(WALL_U0), y0);
+      ctx.quadraticCurveTo(xOf(WALL_U0) - reach * 0.4, y0 + 1.6, x1, Math.min(y1, yPool + 1.2));
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
-  const wallX = xOf(7.5);
-  const wallW = xOf(8.1) - wallX;
-  const wallY = yOf(1);
-  const wallH = yOf(-0.015) - wallY;
   ctx.strokeStyle = INK;
   ctx.globalAlpha = 1;
   ctx.lineWidth = 4.6;
