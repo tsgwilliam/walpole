@@ -1,45 +1,13 @@
 import Link from "next/link";
 import type { ConditionsSheet } from "@/lib/conditions";
-import { CHOP_LEVELS, chopLabel, classifyChop } from "@/lib/chop";
+import { chopLabel, classifyChop } from "@/lib/chop";
 import { glanceMode, MODE_HEADLINE, modeEndAt, modeRemainingLine } from "@/lib/modes";
+import type { PictureMode } from "@/lib/section-scene";
+import { recentTidePeak, tideExtremesLine, tideTrend } from "@/lib/tide-glance";
 import { windGlanceLine } from "@/lib/wind-line";
-import {
-  CLARITY_OPTIONS,
-  CROWD_OPTIONS,
-  FEEL_OPTIONS,
-  labelOf,
-  SWIM_OPTIONS,
-  TEMP_OPTIONS,
-  WHEN_OPTIONS,
-  WHERE_OPTIONS,
-  WILDLIFE_OPTIONS,
-  WIND_OPTIONS,
-} from "@/lib/options";
-import { formatLondonTime, parseLondonCivil } from "@/lib/time";
+import { parseLondonCivil } from "@/lib/time";
 import { waterGlanceLines } from "@/lib/water-copy";
 import { LiveSection } from "./live-section";
-import { lineFrom, surfacePoints } from "./surface-line";
-import { TideChart } from "./tide-chart";
-
-function tideTrend(
-  points: { t: string; h: number }[],
-  nowIso: string,
-  height: number,
-): "rising" | "falling" | "steady" {
-  const now = new Date(nowIso).getTime();
-  const target = now - 45 * 60 * 1000;
-  let best: { t: number; h: number } | null = null;
-  for (const point of points) {
-    const t = new Date(point.t).getTime();
-    if (t > now) continue;
-    if (!best || Math.abs(t - target) < Math.abs(best.t - target)) best = { t, h: point.h };
-  }
-  if (!best || Math.abs(best.t - target) > 80 * 60 * 1000) return "steady";
-  const delta = height - best.h;
-  if (delta > 0.03) return "rising";
-  if (delta < -0.03) return "falling";
-  return "steady";
-}
 
 function waterLine(sewage: ConditionsSheet["sewage"], nowIso: string) {
   return waterGlanceLines({
@@ -52,31 +20,13 @@ function waterLine(sewage: ConditionsSheet["sewage"], nowIso: string) {
   });
 }
 
-function IconClock() {
-  return (
-    <svg className="note-icon" viewBox="0 0 22 22" aria-hidden="true">
-      <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M11 6.5 V11 L14 13" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function IconWave() {
-  return (
-    <svg className="note-icon" viewBox="0 0 22 22" aria-hidden="true">
-      <path d="M2 9.5c1.6 0 1.6-2.4 3.2-2.4S6.8 9.5 8.4 9.5s1.6-2.4 3.2-2.4 1.6 2.4 3.2 2.4 1.6-2.4 3.2-2.4 1.6 2.4 3.2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M2 15c1.6 0 1.6-2.4 3.2-2.4S6.8 15 8.4 15s1.6-2.4 3.2-2.4 1.6 2.4 3.2 2.4 1.6-2.4 3.2-2.4 1.6 2.4 3.2 2.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
 export function Glance({
   sheet,
   sectionMode,
 }: {
   sheet: ConditionsSheet;
-  /** Forces the section clip. Used to photograph each mode. */
-  sectionMode?: "pool" | "waterfall" | "sea" | null;
+  /** `?mode=` draws one picture for QA. The live page leaves this unset. */
+  sectionMode?: PictureMode | null;
 }) {
   const wall = sheet.wall;
   const weather = sheet.weather;
@@ -89,12 +39,11 @@ export function Glance({
     ? modeRemainingLine(mode, modeEndAt(wall!.state, wall!.changes, sheet.generatedAt), sheet.generatedAt)
     : null;
   const water = waterLine(sheet.sewage, sheet.generatedAt);
+  const extrema = sheet.tide ? tideExtremesLine(sheet.tide.events) : null;
 
   const tideFact = wall
     ? `tide ${wall.heightMetres.toFixed(1)} m CD${trend ? ` · ${trend}` : ""}${sheet.tide?.stale ? " · saved" : ""}`
-    : sheet.tideError
-      ? "tide quiet"
-      : "tide quiet";
+    : "tide quiet";
 
   const airFact = weather
     ? `air ${Math.round(weather.temperatureC)}°${weather.stale ? " · saved" : ""}`
@@ -110,73 +59,39 @@ export function Glance({
       })
     : null;
 
+  const section =
+    sectionMode || wall
+      ? {
+          mode: sectionMode ?? null,
+          seaMetresCD: wall?.heightMetres ?? null,
+          wallTopMetresCD: sheet.settings.wallTopMetresCD,
+          falling: trend === "falling",
+          recentPeakMetresCD: sheet.tide ? recentTidePeak(sheet.tide.points, sheet.generatedAt) : null,
+          waveHeightM: weather?.waveHeightM ?? null,
+          wavePeriodS: weather?.wavePeriodS ?? null,
+          windMph: weather?.windMph ?? null,
+          chopLevel: chop?.level ?? 2,
+          compass: weather?.windCompass ?? null,
+        }
+      : null;
+
   return (
     <div className="glance-col" id="reading">
       <div className="hero">
-        <LiveSection state={wall?.state ?? null} mode={sectionMode} />
-        <div className="hero-status">
-          <h1 className="now-headline">{mode ? MODE_HEADLINE[mode] : "No reading"}</h1>
-          <ul className="facts">
-            {remaining ? <li>{remaining}</li> : null}
-            <li>{tideFact}</li>
-            <li>{airFact}</li>
-            {windFact ? <li>{windFact}</li> : null}
-          </ul>
-          <header className="glance-title">
-            <p className="glance-place">
-              Walpole Bay <span className="glance-when">· today · now</span>
-            </p>
-            <nav className="glance-nav" aria-label="Sections">
-              <Link href="/observe">Note</Link>
-              <Link href="/about">About</Link>
-            </nav>
-          </header>
-        </div>
-        <p className="sr-only">
-          {mode
-            ? `${MODE_HEADLINE[mode]}. ${remaining}. Predicted ${wall!.heightMetres.toFixed(1)} metres Chart Datum${trend ? `, ${trend}` : ""}.`
-            : sheet.settingsProblem || sheet.tideError || "Wall reading withheld."}
-          {chop ? ` Chop: ${chopLabel(chop.level)}. ${chop.caption}.` : ""}
-          {windFact ? ` Wind: ${windFact}.` : ""}
-        </p>
+        <LiveSection input={section} />
       </div>
 
-      <section>
-        <h2 className="sec-title">Water choppiness</h2>
-        <ol className="chop-list">
-          {CHOP_LEVELS.map((item) => {
-            const on = chop?.level === item.level;
-            return (
-              <li key={item.level} className={on ? "chop-level on" : "chop-level"}>
-                <span className="chop-mark">
-                  <svg className={on ? "chop-sample on" : "chop-sample"} viewBox="0 0 64 28" aria-hidden="true">
-                    <path d={lineFrom(surfacePoints(2, 62, 14, item.level))} />
-                  </svg>
-                </span>
-                <p className={on ? "chop-name on" : "chop-name"}>{item.label}</p>
-              </li>
-            );
-          })}
-        </ol>
-        <p className="sr-only">{chop ? `${chopLabel(chop.level)}. ${chop.caption}` : "Wind unavailable"}</p>
-        <p className="chop-caption">{chop ? chop.caption : "wind quiet"}</p>
-      </section>
+      <div className="mode-block">
+        <h1 className="now-headline">{mode ? MODE_HEADLINE[mode] : "No reading"}</h1>
+        {remaining ? <p className="mode-remain">{remaining}</p> : null}
+      </div>
 
-      <section>
-        <h2 className="sec-title">Tide today</h2>
-        {sheet.tide && sheet.tide.points.length > 1 ? (
-          <TideChart points={sheet.tide.points} now={sheet.generatedAt} windows={wall?.waterfallWindows ?? []} />
-        ) : (
-          <p className="facts">{sheet.tideError ?? "No curve for today."}</p>
-        )}
-        <p className="sr-only">
-          {sheet.tide
-            ? sheet.tide.events
-                .map((event) => `${event.kind === "high" ? "High water" : "Low water"} ${formatLondonTime(new Date(event.t))}`)
-                .join(". ")
-            : "Tide curve unavailable."}
-        </p>
-      </section>
+      <p className="facts-strip">
+        <span>{tideFact}</span>
+        <span>{airFact}</span>
+        {windFact ? <span>{windFact}</span> : null}
+      </p>
+      {extrema ? <p className="tide-extrema">{extrema}</p> : null}
 
       <section>
         <h2 className="sec-title">Water quality</h2>
@@ -187,47 +102,6 @@ export function Glance({
         ))}
       </section>
 
-      <section>
-        <h2 className="sec-title">Notes</h2>
-        {sheet.observations.length === 0 ? (
-          <p className="water-line">none approved</p>
-        ) : (
-          sheet.observations.map((note) => {
-            const when = [labelOf(WHEN_OPTIONS, note.whenSeen), labelOf(WHERE_OPTIONS, note.wherePool)]
-              .filter(Boolean)
-              .join(" · ");
-            const feel = [
-              labelOf(FEEL_OPTIONS, note.conditionsFeel),
-              labelOf(TEMP_OPTIONS, note.waterTempFeel),
-              labelOf(WIND_OPTIONS, note.windFeel),
-              labelOf(CLARITY_OPTIONS, note.clarity),
-              labelOf(CROWD_OPTIONS, note.crowd),
-              labelOf(WILDLIFE_OPTIONS, note.wildlife),
-              labelOf(SWIM_OPTIONS, note.swimAgain),
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <article className="note-block" key={note.id}>
-                <p className="note-row">
-                  <IconClock />
-                  <span>
-                    {when}
-                    {note.isSeed ? <span className="note-demo"> demo</span> : null}
-                  </span>
-                </p>
-                {feel ? (
-                  <p className="note-row">
-                    <IconWave />
-                    <span>{feel}</span>
-                  </p>
-                ) : null}
-              </article>
-            );
-          })
-        )}
-      </section>
-
       <footer className="glance-foot">
         <p>
           <a href="https://easytide.admiralty.co.uk/">EasyTide Margate</a>
@@ -235,10 +109,21 @@ export function Glance({
           <a href="https://open-meteo.com/">Open-Meteo</a>
           {" · "}
           <a href="https://riversandseaswatch.southernwater.co.uk/">Southern Water</a>
+          {" · "}
+          <Link href="/observe">Note</Link>
           {" · skin: Kem / Tributary"}
         </p>
         <p>Swim at your own risk.</p>
       </footer>
+
+      <p className="sr-only">
+        {mode
+          ? `${MODE_HEADLINE[mode]}. ${remaining}. Predicted ${wall!.heightMetres.toFixed(1)} metres Chart Datum${trend ? `, ${trend}` : ""}.`
+          : sheet.settingsProblem || sheet.tideError || "Wall reading withheld."}
+        {chop ? ` Chop: ${chopLabel(chop.level)}. ${chop.caption}.` : ""}
+        {windFact ? ` Wind: ${windFact}.` : ""}
+        {extrema ? ` ${extrema}.` : ""}
+      </p>
     </div>
   );
 }

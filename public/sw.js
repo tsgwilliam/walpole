@@ -1,4 +1,4 @@
-const CACHE = "walpole-sheet-v4";
+const CACHE = "walpole-sheet-v5";
 const PRECACHE = [
   "/manifest.webmanifest",
   "/icons/icon-192.png",
