@@ -64,8 +64,11 @@ function WindGlyph({
   const showGust = gust > mean + 0.5;
   const speedLabel = gustMs != null && gustMs > avgMs + 0.05 ? `${avgMs.toFixed(1)} · ${gustMs.toFixed(1)}` : avgMs.toFixed(1);
   const rad = (travel * Math.PI) / 180;
-  const labelX = at.x + Math.sin(rad) * 14;
-  const labelY = at.y - Math.cos(rad) * 14;
+  const cross = rad + Math.PI / 2;
+  const side = 20 + mean * 0.42;
+  const labelX = at.x + Math.sin(cross) * side;
+  const labelY = at.y - Math.cos(cross) * side;
+  const anchor = Math.sin(cross) >= 0 ? "start" : "end";
   return (
     <>
       <g
@@ -92,7 +95,18 @@ function WindGlyph({
         <line x1={0} y1={tail} x2={0} y2={tip + head * 0.55} stroke={meanColour} strokeWidth={meanWidth} strokeLinecap="round" />
         <path d={`M 0 ${tip.toFixed(1)} L ${(-wing).toFixed(1)} ${(tip + head).toFixed(1)} H ${wing.toFixed(1)} Z`} fill={meanColour} />
       </g>
-      <text className="wind-speed-label" x={labelX} y={labelY} textAnchor="middle" fill={meanColour} fontSize="11" fontFamily={FONT}>
+      <text
+        className="wind-speed-label"
+        x={labelX}
+        y={labelY}
+        textAnchor={anchor}
+        fill={meanColour}
+        fontSize="11"
+        fontFamily={FONT}
+        stroke={PAPER}
+        strokeWidth="3"
+        paintOrder="stroke"
+      >
         {speedLabel} m/s
       </text>
     </>
@@ -143,22 +157,25 @@ function RoughnessField({
           ? { whole: true, polygon: [] as PlanPoint[] }
           : { whole: false, polygon: zone.polygon };
 
-    const span =
-      Math.max(
-        Math.hypot(ne.x - nw.x, ne.y - nw.y),
-        Math.hypot(se.x - sw.x, se.y - sw.y),
-        Math.hypot(ne.x - se.x, ne.y - se.y),
-      ) * 0.95;
-    const half = span / 2;
-    const stepY = 7;
+    const reach = Math.max(
+      Math.hypot(nw.x - mid.x, nw.y - mid.y),
+      Math.hypot(ne.x - mid.x, ne.y - mid.y),
+      Math.hypot(se.x - mid.x, se.y - mid.y),
+      Math.hypot(sw.x - mid.x, sw.y - mid.y),
+    );
+    const half = reach * 1.45;
+    const stepY = 5;
+    const stepX = 6;
 
     for (let ly = -half; ly <= half; ly += stepY) {
-      const sample = localToPlan(0, ly, mid, travel, layout);
-      const rough = roughnessAt(sample, chopLevel, quietForRough);
+      let rough = 0;
+      for (let lx = -half; lx <= half; lx += stepX) {
+        rough = Math.max(rough, roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough));
+      }
       if (rough < 0.08) continue;
       const amp = 0.6 + rough * 2.4;
       const drift = phase + ly * 0.05;
-      const d = waveScanline(-half, half, ly, amp, drift, 5 + rough * 3);
+      const d = waveScanline(-half, half, ly, amp, drift, 4 + rough * 2.5);
       if (d) rows.push({ d, opacity: 0.12 + rough * 0.55 });
     }
 

@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { cliffTemperLine } from "@/lib/chop";
-import type { ChopLevel } from "@/lib/chop";
+import { classifyChop, cliffTemperLine, type ChopLevel } from "@/lib/chop";
 import { compassFromDegrees } from "@/lib/compass";
 import {
   glanceAt,
@@ -13,6 +12,8 @@ import {
   type PlanWindCheck,
   type WindFrame,
 } from "@/lib/glance-at";
+import { MPH_TO_MS } from "@/lib/wind-line";
+import type { SectionInput } from "@/lib/section-scene";
 import { LiveSection } from "./live-section";
 import { PlanView } from "./plan-view";
 import { TideChart } from "./tide-chart";
@@ -58,7 +59,26 @@ export function GlanceView({
       end: new Date(start + span * 60_000).toISOString(),
     }));
   }, [prepared]);
-  const chopLevel = (frame.section?.chopLevel ?? 2) as ChopLevel;
+  const sectionInput = useMemo((): SectionInput | null => {
+    if (!frame.section) return null;
+    if (!planWind) return frame.section;
+    const rose = compassFromDegrees(planWind.fromDeg);
+    const windMph = planWind.avgMs / MPH_TO_MS;
+    const chop = classifyChop({
+      windMph,
+      compass: rose.short,
+      lightKt: source.chopLightKt,
+      strongKt: source.chopStrongKt,
+    });
+    return {
+      ...frame.section,
+      windMph,
+      compass: rose.short,
+      chopLevel: chop.level,
+    };
+  }, [frame.section, planWind, source.chopLightKt, source.chopStrongKt]);
+
+  const chopLevel = (sectionInput?.chopLevel ?? 2) as ChopLevel;
   const tideEvents = source.tide?.events ?? [];
 
   return (
@@ -77,7 +97,7 @@ export function GlanceView({
         </p>
       ) : null}
       <div className="hero">
-        <LiveSection input={frame.section} />
+        <LiveSection input={sectionInput} />
       </div>
 
       <div className="timeline">
