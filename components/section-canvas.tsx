@@ -174,12 +174,11 @@ function paint(
 
   const band = (u0: number, u1: number) => {
     if (u1 - u0 < 0.08) return;
-    drawRuns(ctx, u0, u1, (u) => yOf(surface(u)), 1.7, 0.94);
-    drawRuns(ctx, u0, u1, (u) => yOf(surface(u)) + 1.4, 0.85, 0.32);
+    drawRuns(ctx, u0, u1, (u) => yOf(surface(u)), 1.55, 0.92);
     for (let i = 1; i <= motion.lines; i++) {
-      const depth = 6 + i * (7 + section.chopLevel * 0.8);
-      const alpha = Math.max(0.07, 0.4 - i * 0.045);
-      drawRuns(ctx, u0, u1, (u) => yOf(surface(u)) + depth, 0.85, alpha);
+      const depth = 5 + i * (6 + section.chopLevel * 0.6);
+      const alpha = Math.max(0.1, 0.48 - i * 0.05);
+      drawRuns(ctx, u0, u1, (u) => yOf(surface(u)) + depth, 0.8, alpha);
     }
   };
 
@@ -210,22 +209,22 @@ function paint(
   if (frame.sheet > 0.04) {
     const yCrest = yOf(1);
     const yPool = yOf(frame.pool);
-    const ySea = yOf(section.seaDraw + frame.phaseSwell);
-    const reach = 22 + frame.sheet * 58;
-    const lines = frame.sheet > 0.62 ? 4 : frame.sheet > 0.28 ? 3 : 2;
-    ctx.lineWidth = 0.55 + frame.sheet * 0.5;
-    ctx.globalAlpha = 0.3 + frame.sheet * 0.6;
+    const ySea = yOf(Math.min(1.08, section.seaDraw + frame.phaseSwell));
+    const reach = 26 + frame.sheet * 64;
+    const lines = frame.sheet > 0.5 ? 3 : frame.sheet > 0.18 ? 2 : 1;
+    ctx.lineWidth = 0.7;
+    ctx.globalAlpha = 0.42 + frame.sheet * 0.35;
     ctx.beginPath();
-    ctx.moveTo(xOf(8.1), Math.min(ySea, yCrest + 1));
-    ctx.lineTo(xOf(7.5), yCrest);
+    ctx.moveTo(xOf(8.1), Math.min(ySea, yCrest));
+    ctx.lineTo(xOf(7.5), yCrest + 0.3);
     ctx.stroke();
     for (let i = 0; i < lines; i++) {
-      const y0 = yCrest + i * 1.15;
-      const y1 = yPool + i * 0.35;
-      const x1 = xOf(7.5) - reach - i * 4;
+      const y0 = yCrest + 0.8 + i * 2.6;
+      const y1 = y0 + 2.2;
+      const x1 = xOf(7.5) - reach * (0.78 + i * 0.06);
       ctx.beginPath();
-      ctx.moveTo(xOf(7.5) + 0.5, y0);
-      ctx.quadraticCurveTo(xOf(7.5) - reach * 0.42, (y0 + y1) / 2 + 1.2, x1, y1);
+      ctx.moveTo(xOf(7.5), y0);
+      ctx.quadraticCurveTo(xOf(7.5) - reach * 0.4, y0 + 1.6, x1, Math.min(y1, yPool + 1.2));
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -237,7 +236,7 @@ function paint(
   const wallH = yOf(-0.015) - wallY;
   ctx.strokeStyle = INK;
   ctx.globalAlpha = 1;
-  ctx.lineWidth = 3.4;
+  ctx.lineWidth = 4.6;
   ctx.lineJoin = "miter";
   ctx.strokeRect(wallX, wallY, wallW, wallH);
 }
