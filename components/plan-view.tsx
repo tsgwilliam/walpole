@@ -163,7 +163,7 @@ function RoughnessField({
     }
 
     return rows;
-  }, [chopLevel, zone, phase, travel, mid.x, mid.y]);
+  }, [chopLevel, zone, phase, travel, mid]);
 
   return (
     <g clipPath="url(#pool-clip)">
