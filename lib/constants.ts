@@ -1,3 +1,5 @@
+import { WORKING_WALL } from "./geography";
+
 export const POOL = {
   name: "Walpole Bay Tidal Pool",
   place: "Margate, Kent",
@@ -37,16 +39,17 @@ export const LINKS = {
 } as const;
 
 /**
- * Seeded guesses, metres above Chart Datum.
+ * Seeded wall heights, metres above Chart Datum.
  * Historic England (Kent HER DKE22446): the seaward wall is about seven feet
- * above the chalk, with overflows six inches below the top. That is relative
- * to the pool floor, not Chart Datum. The listing also says the wall top was
- * set so the pool is submerged at every tide. 4.00 / 3.85 is a round
- * placeholder below a spring high water at Margate, not a survey.
+ * above the chalk, with overflows six inches below the top. That relative
+ * pair is kept: overflow sits 0.15 m under the crest, and the waterfall
+ * window is still about fifteen minutes. The crest itself is the working
+ * 3.5 m from the 2020 elevation notes (±0.2 m), not the old 4.00 m placeholder.
+ * See GEOGRAPHY.md.
  */
 export const DEFAULT_WALL = {
-  wallTopMetresCD: 4,
-  overflowMetresCD: 3.85,
+  wallTopMetresCD: WORKING_WALL.crestMetresCD,
+  overflowMetresCD: WORKING_WALL.overflowMetresCD,
   approachBandMetres: 0.35,
   waterfallWindowMinutes: 15,
   waveAllowanceMetres: 0,

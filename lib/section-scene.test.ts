@@ -45,14 +45,16 @@ test("horizontal ratios are beach, pool, wall, sea", () => {
   assert.ok(Math.abs(edges.wallW / 1160 - 0.6 / 11.6) < 1e-9);
 });
 
-test("chalk is higher inland and meets the floor at the wall", () => {
+test("chalk is a short beach then a flat pool floor", () => {
   assert.ok(chalkSchematic(0) > 1);
-  assert.ok(chalkSchematic(2.5) > 0.45 && chalkSchematic(2.5) < 0.58);
+  assert.ok(chalkSchematic(0) < 1.5);
+  assert.equal(chalkSchematic(RATIO.beach), 0);
+  assert.equal(chalkSchematic(5), 0);
   assert.equal(chalkSchematic(7.5), 0);
   assert.equal(chalkSchematic(8.1), 0);
   assert.ok(chalkSchematic(11.6) < 0 && chalkSchematic(11.6) > -0.2);
   let prev = chalkSchematic(0);
-  for (let u = 0.25; u <= 7.5; u += 0.25) {
+  for (let u = 0.25; u <= RATIO.beach; u += 0.25) {
     const h = chalkSchematic(u);
     assert.ok(h <= prev + 1e-9, `chalk rose at ${u}`);
     prev = h;

@@ -1,6 +1,6 @@
 import type { ConditionsSheet } from "@/lib/conditions";
 import { chopThresholds } from "@/lib/chop";
-import type { GlanceHour, GlanceSource } from "@/lib/glance-at";
+import type { GlanceHour, GlanceSource, PlanWindCheck } from "@/lib/glance-at";
 import type { PictureMode } from "@/lib/section-scene";
 import { parseLondonCivil } from "@/lib/time";
 import { waterGlanceLines } from "@/lib/water-copy";
@@ -78,12 +78,15 @@ export function Glance({
   sheet,
   sectionMode,
   initialMinutes,
+  planWind,
 }: {
   sheet: ConditionsSheet;
   /** `?mode=` draws one picture for QA. The live page leaves this unset. */
   sectionMode?: PictureMode | null;
   /** Minutes after the sheet time. `?at=` sets this; the slider starts here. */
   initialMinutes: number;
+  /** `?wind=` draws the plan for one wind. The tide and the section stay put. */
+  planWind?: PlanWindCheck | null;
 }) {
   const water = waterGlanceLines({
     status: sheet.sewage.error || sheet.sewage.status === "unavailable" ? "unavailable" : sheet.sewage.status,
@@ -97,6 +100,7 @@ export function Glance({
     <GlanceView
       source={toSource(sheet, sectionMode ?? null)}
       initialMinutes={initialMinutes}
+      planWind={planWind ?? null}
       water={{ lines: water.lines, warn: water.warn }}
     />
   );

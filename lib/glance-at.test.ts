@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { downwindDegrees } from "./compass.ts";
-import { glanceAt, parseAtOffsetMinutes, prepareGlance, type GlanceSource } from "./glance-at.ts";
+import { glanceAt, parseAtOffsetMinutes, parsePlanWind, prepareGlance, type GlanceSource } from "./glance-at.ts";
 import { resolveSection } from "./section-scene.ts";
 import type { WallSettings } from "./wall-state.ts";
 
@@ -183,6 +183,14 @@ test("?at= accepts hours, minutes, and London civil time", () => {
   assert.equal(parseAtOffsetMinutes("-2h", now), 0);
   assert.equal(parseAtOffsetMinutes("2026-10-01T18:00", now), 7 * 60);
   assert.equal(parseAtOffsetMinutes("2026-10-01T17:00:00.000Z", now), 7 * 60);
+});
+
+test("?wind= is a plan drawing check and does not invent a tide", () => {
+  assert.equal(parsePlanWind(undefined), null);
+  assert.equal(parsePlanWind("nope"), null);
+  assert.deepEqual(parsePlanWind("180,14,18"), { fromDeg: 180, avgMs: 14, gustMs: 18 });
+  assert.deepEqual(parsePlanWind(" -20, 1.5 "), { fromDeg: 340, avgMs: 1.5, gustMs: null });
+  assert.equal(parsePlanWind("180,-1"), null);
 });
 
 test("?mode= pins the picture and the tide height still follows the clock", () => {

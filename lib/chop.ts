@@ -32,6 +32,11 @@ const ONSHORE = new Set(["N", "NNE", "NE", "ENE", "NW", "NNW", "WNW"]);
 /** Cliff along the south takes some of this. */
 const SHELTER = new Set(["S", "SSE", "SSW", "SW", "WSW"]);
 
+/** True when the cliff is treated as taking some of this wind. A direction guess. */
+export function southerlyShelter(compass: string | null | undefined): boolean {
+  return SHELTER.has((compass || "").toUpperCase());
+}
+
 export type ChopReading = {
   level: ChopLevel;
   knots: number;

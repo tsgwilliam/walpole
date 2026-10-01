@@ -2,19 +2,47 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { glanceAt, HORIZON_MINUTES, prepareGlance, type GlanceSource } from "@/lib/glance-at";
+import { cliffTemperLine } from "@/lib/chop";
+import { compassFromDegrees } from "@/lib/compass";
+import {
+  glanceAt,
+  HORIZON_MINUTES,
+  prepareGlance,
+  type GlanceSource,
+  type PlanWindCheck,
+  type WindFrame,
+} from "@/lib/glance-at";
 import { formatLondonDate } from "@/lib/time";
 import { LiveSection } from "./live-section";
 import { PlanView } from "./plan-view";
 import { TideChart } from "./tide-chart";
 
+function windForPlan(wind: WindFrame | null, check: PlanWindCheck | null): WindFrame | null {
+  if (!check) return wind;
+  const rose = compassFromDegrees(check.fromDeg);
+  return {
+    compass: rose.short,
+    word: rose.word,
+    directionDeg: check.fromDeg,
+    hasDirection: true,
+    avgMs: check.avgMs.toFixed(1),
+    periodPhrase: "this drawing",
+    gustMs: check.gustMs == null ? null : check.gustMs.toFixed(1),
+    stale: false,
+    summary: wind?.summary ?? "",
+    cliff: cliffTemperLine(rose.short),
+  };
+}
+
 export function GlanceView({
   source,
   initialMinutes,
+  planWind,
   water,
 }: {
   source: GlanceSource;
   initialMinutes: number;
+  planWind: PlanWindCheck | null;
   water: { lines: string[]; warn: boolean };
 }) {
   const prepared = useMemo(() => prepareGlance(source), [source]);
@@ -67,7 +95,7 @@ export function GlanceView({
         />
       </div>
 
-      <PlanView wind={frame.wind} />
+      <PlanView wind={windForPlan(frame.wind, planWind)} submerged={frame.mode === "sea"} />
 
       <div className="mode-block">
         <h1 className="now-headline">{frame.headline}</h1>

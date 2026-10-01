@@ -1,31 +1,25 @@
 /**
- * Schematic plan of Walpole tidal pool.
+ * Schematic plan of Walpole tidal pool, in the local frame from geography.
  *
- * Lengths are the Historic England list description (1421296 / Kent HER
- * DKE22446): seaward wall about 91 m, landward opening about 168 m, beach-to-sea
- * sides about 137 m. They close as a trapezoid. This is not a survey of the
- * outline, and the drawing exaggerates the wall's thickness so the line reads.
- * Sea is north. The beach, and the cliff, are south.
+ * Origin is the middle of the seaward wall crest. X is east, Y is north.
+ * Lengths are the Historic England listing. The drawing exaggerates the
+ * wall's thickness. Sea is north. The beach, and the cliff, are south.
+ * The south side is open; the wall is a U.
  */
-export const POOL_PLAN = {
-  landwardM: 168,
-  seawardM: 91,
-  sideM: 137,
-} as const;
+import { LISTING_PLAN, poolCentroidLocal, poolDepthM, poolOutline } from "./geography";
+
+export const POOL_PLAN = LISTING_PLAN;
 
 export type PlanPoint = { x: number; y: number };
 
 /** Perpendicular beach-to-sea distance, metres. Throws if the lengths cannot close. */
 export function poolPlanDepthM(): number {
-  const overhang = (POOL_PLAN.landwardM - POOL_PLAN.seawardM) / 2;
-  const under = POOL_PLAN.sideM * POOL_PLAN.sideM - overhang * overhang;
-  if (!(under > 0)) throw new Error("Listing lengths do not close a pool plan.");
-  return Math.sqrt(under);
+  return poolDepthM();
 }
 
 /**
- * North-up metres. Origin is the middle of the landward opening.
- * +y is north, towards the sea.
+ * North-up metres. Origin is the middle of the seaward crest.
+ * +y is north. The beach opening is south, at a negative y.
  */
 export function poolPlanCorners(): {
   nw: PlanPoint;
@@ -34,26 +28,20 @@ export function poolPlanCorners(): {
   sw: PlanPoint;
   depthM: number;
 } {
-  const depthM = poolPlanDepthM();
-  const halfLand = POOL_PLAN.landwardM / 2;
-  const halfSea = POOL_PLAN.seawardM / 2;
+  const [nw, ne, se, sw] = poolOutline();
   return {
-    sw: { x: -halfLand, y: 0 },
-    se: { x: halfLand, y: 0 },
-    ne: { x: halfSea, y: depthM },
-    nw: { x: -halfSea, y: depthM },
-    depthM,
+    nw: { x: nw.x, y: nw.y },
+    ne: { x: ne.x, y: ne.y },
+    se: { x: se.x, y: se.y },
+    sw: { x: sw.x, y: sw.y },
+    depthM: poolDepthM(),
   };
 }
 
 /** Area centroid, metres. Sits in the water, nearer the wider beach opening. */
 export function poolPlanCentroid(): PlanPoint {
-  const { landwardM, seawardM } = POOL_PLAN;
-  const depthM = poolPlanDepthM();
-  return {
-    x: 0,
-    y: (depthM * (landwardM + 2 * seawardM)) / (3 * (landwardM + seawardM)),
-  };
+  const centroid = poolCentroidLocal();
+  return { x: centroid.x, y: centroid.y };
 }
 
 export type PlanLayout = {
@@ -62,22 +50,30 @@ export type PlanLayout = {
   originY: number;
 };
 
-/** Fit the landward width and the depth into a view box. +y in the box is south. */
+/** Fit the pool into a view box. +y in the box is south (north stays up). */
 export function planLayout(
   viewW: number,
   viewH: number,
   pad: { l: number; r: number; t: number; b: number },
 ): PlanLayout {
-  const depth = poolPlanDepthM();
+  const corners = poolPlanCorners();
+  const xs = [corners.nw.x, corners.ne.x, corners.se.x, corners.sw.x];
+  const ys = [corners.nw.y, corners.ne.y, corners.se.y, corners.sw.y];
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = maxX - minX;
+  const height = maxY - minY;
   const innerW = viewW - pad.l - pad.r;
   const innerH = viewH - pad.t - pad.b;
-  const scale = Math.min(innerW / POOL_PLAN.landwardM, innerH / depth);
-  const drawnW = POOL_PLAN.landwardM * scale;
-  const drawnH = depth * scale;
+  const scale = Math.min(innerW / width, innerH / height);
+  const drawnW = width * scale;
+  const drawnH = height * scale;
   return {
     scale,
-    originX: pad.l + (innerW - drawnW) / 2 + drawnW / 2,
-    originY: pad.t + (innerH - drawnH) / 2 + drawnH,
+    originX: pad.l + (innerW - drawnW) / 2 - minX * scale,
+    originY: pad.t + (innerH - drawnH) / 2 + maxY * scale,
   };
 }
 
