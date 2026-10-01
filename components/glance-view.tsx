@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { cliffTemperLine } from "@/lib/chop";
+import { classifyChop, cliffTemperLine, type ChopLevel } from "@/lib/chop";
 import { compassFromDegrees } from "@/lib/compass";
 import {
   glanceAt,
@@ -12,7 +12,8 @@ import {
   type PlanWindCheck,
   type WindFrame,
 } from "@/lib/glance-at";
-import { formatLondonDate } from "@/lib/time";
+import { MPH_TO_MS } from "@/lib/wind-line";
+import type { SectionInput } from "@/lib/section-scene";
 import { LiveSection } from "./live-section";
 import { PlanView } from "./plan-view";
 import { TideChart } from "./tide-chart";
@@ -58,15 +59,36 @@ export function GlanceView({
       end: new Date(start + span * 60_000).toISOString(),
     }));
   }, [prepared]);
+  const sectionInput = useMemo((): SectionInput | null => {
+    if (!frame.section) return null;
+    if (!planWind) return frame.section;
+    const rose = compassFromDegrees(planWind.fromDeg);
+    const windMph = planWind.avgMs / MPH_TO_MS;
+    const chop = classifyChop({
+      windMph,
+      compass: rose.short,
+      lightKt: source.chopLightKt,
+      strongKt: source.chopStrongKt,
+    });
+    return {
+      ...frame.section,
+      windMph,
+      compass: rose.short,
+      chopLevel: chop.level,
+    };
+  }, [frame.section, planWind, source.chopLightKt, source.chopStrongKt]);
+
+  const chopLevel = (sectionInput?.chopLevel ?? 2) as ChopLevel;
+  const tideEvents = source.tide?.events ?? [];
 
   return (
     <div
-      className="glance-col"
+      className="glance-col glance-field"
       id="reading"
       data-glance-minutes={frame.minutesAhead}
       data-glance-mode={frame.mode ?? ""}
       data-sea-m={frame.section?.seaMetresCD ?? ""}
-      data-chop={frame.section?.chopLevel ?? ""}
+      data-chop={chopLevel}
       data-demo={demoLabel ? "storm" : undefined}
     >
       {demoLabel ? (
@@ -75,7 +97,7 @@ export function GlanceView({
         </p>
       ) : null}
       <div className="hero">
-        <LiveSection input={frame.section} />
+        <LiveSection input={sectionInput} />
       </div>
 
       <div className="timeline">
@@ -103,28 +125,25 @@ export function GlanceView({
         />
       </div>
 
-      <PlanView wind={windForPlan(frame.wind, planWind)} submerged={frame.mode === "sea"} />
+      <PlanView
+        wind={windForPlan(frame.wind, planWind)}
+        submerged={frame.mode === "sea"}
+        chopLevel={chopLevel}
+      />
 
-      <div className="mode-block">
-        <h1 className="now-headline">{frame.headline}</h1>
-        {frame.remaining ? <p className="mode-remain">{frame.remaining}</p> : null}
-      </div>
-
-      <p className="facts-strip">
-        <span>{frame.tideFact}</span>
-        <span>{frame.airFact}</span>
-      </p>
+      <p className="mode-stamp">{frame.headline}</p>
 
       <section className="tide-block">
-        <div className="tide-head">
-          <h2 className="sec-title">Tide</h2>
-          <p className="tide-day">{formatLondonDate(new Date(frame.at))}</p>
-        </div>
-        <TideChart points={prepared.pointsIso} now={frame.at} windows={tideWindows} />
-        {frame.extrema ? <p className="tide-extrema">{frame.extrema}</p> : null}
+        <TideChart
+          points={prepared.pointsIso}
+          now={frame.at}
+          windows={tideWindows}
+          events={tideEvents}
+          wallTopMetresCD={source.settings.wallTopMetresCD}
+        />
       </section>
 
-      <section>
+      <section className="water-block">
         <h2 className="sec-title">Water quality</h2>
         {water.lines.map((line) => (
           <p key={line} className={water.warn ? "water-line warn" : "water-line"}>

@@ -3,10 +3,15 @@
 import { useEffect, useRef } from "react";
 import {
   RATIO_SUM,
+  WALL_U0,
+  WALL_U1,
   chalkSchematic,
   chopMotion,
   frameLevels,
+  heldRipple,
+  heldSurface,
   resolveSection,
+  surfaceRipple,
   swellOffset,
   waterlineU,
   type PictureMode,
@@ -75,17 +80,13 @@ function drawRuns(
 }
 
 function chopOffset(u: number, timeS: number, level: SectionInput["chopLevel"], bias: number): number {
-  const motion = chopMotion(level, bias);
-  const a = Math.sin(u * (3.2 + level * 0.55) + timeS * motion.speed);
-  const b = Math.sin(u * (6.8 + level * 0.9) - timeS * motion.speed * 1.33 + 0.6);
-  const mix = motion.wobble * 0.28;
-  return (motion.amp * (a + mix * b)) / (1 + mix);
+  return surfaceRipple(u, timeS, level, chopMotion(level, bias).amp);
 }
 
 function biasAt(u: number, pool: number, sea: number): number {
-  if (u <= 7.5) return pool;
-  if (u >= 8.1) return sea;
-  return pool + ((sea - pool) * (u - 7.5)) / 0.6;
+  if (u <= WALL_U0) return pool;
+  if (u >= WALL_U1) return sea;
+  return pool + ((sea - pool) * (u - WALL_U0)) / (WALL_U1 - WALL_U0);
 }
 
 function makeGrain(w: number, h: number): HTMLCanvasElement {
@@ -150,19 +151,24 @@ function paint(
   ctx.drawImage(grain, 0, 0, bw, bh);
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
 
-  stroke(ctx, chalkPoints(0, 7.5, 0.06), 0.8, 0.16);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0.06), 0.8, 0.16);
-  stroke(ctx, chalkPoints(0, 7.5, 0.12), 0.7, 0.09);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0.12), 0.7, 0.09);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0.06), 0.8, 0.16);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0.06), 0.8, 0.16);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0.12), 0.7, 0.09);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0.12), 0.7, 0.09);
 
   const surface = (u: number) => {
     const bias = biasAt(u, section.poolBias, section.seaBias);
     const chop = chopOffset(u, timeS, section.chopLevel, bias);
     if (section.mode === "sea") {
-      const ampScale = u < 7.5 ? 0.5 + 0.5 * (u / 7.5) : 1;
+      const ampScale = u < WALL_U0 ? 0.5 + 0.5 * (u / WALL_U0) : 1;
       return section.seaDraw + swellOffset(u, timeS, section.waveAmp * ampScale, section.wavePeriodS) + chop;
     }
-    if (u < 7.5) return frame.pool + chop;
+    if (u < WALL_U0) {
+      if (section.mode === "pool" || section.mode === "falling") {
+        return heldSurface(frame.pool, heldRipple(u, timeS, section.chopLevel, section.heldAmp));
+      }
+      return frame.pool + chop;
+    }
     let sea = section.seaDraw + swellOffset(u, timeS, section.waveAmp, section.wavePeriodS) + chop;
     if (section.mode === "pool" || section.mode === "falling") sea = Math.min(sea, 0.975);
     return sea;
@@ -172,24 +178,34 @@ function paint(
   const shore = waterlineU(still) ?? 0;
   const motion = chopMotion(section.chopLevel, 1);
 
-  const band = (u0: number, u1: number) => {
+  const wallX = xOf(WALL_U0);
+  const wallW = xOf(WALL_U1) - wallX;
+  const wallY = yOf(1);
+  const wallH = yOf(-0.015) - wallY;
+
+  /** Sea wash: schematic surface never dips through the wall body — only at/above crest. */
+  const crestSurface = (u: number) => Math.max(1, surface(u));
+  const ySurface = (u: number) => yOf(surface(u));
+  const yCrestWash = (u: number) => yOf(crestSurface(u));
+
+  const band = (u0: number, u1: number, crestOnly = false) => {
     if (u1 - u0 < 0.08) return;
-    drawRuns(ctx, u0, u1, (u) => yOf(surface(u)), 1.55, 0.92);
+    const yAt = crestOnly ? yCrestWash : ySurface;
+    drawRuns(ctx, u0, u1, yAt, crestOnly ? 1.35 : 1.55, crestOnly ? 0.9 : 0.92);
+    if (crestOnly) return;
     for (let i = 1; i <= motion.lines; i++) {
       const depth = 5 + i * (6 + section.chopLevel * 0.6);
       const alpha = Math.max(0.1, 0.48 - i * 0.05);
-      drawRuns(ctx, u0, u1, (u) => yOf(surface(u)) + depth, 0.8, alpha);
+      drawRuns(ctx, u0, u1, (u) => ySurface(u) + depth, 0.8, alpha);
     }
   };
 
-  if (section.mode === "sea") band(shore, RATIO_SUM);
-  else {
-    band(Math.min(shore, 7.5), 7.5);
-    band(8.1, RATIO_SUM);
-  }
+  band(Math.min(shore, WALL_U0), WALL_U0);
+  band(WALL_U1, RATIO_SUM);
+  if (section.mode === "sea") band(WALL_U0, WALL_U1, true);
 
-  stroke(ctx, chalkPoints(0, 7.5, 0), 1.75, 0.95);
-  stroke(ctx, chalkPoints(8.1, RATIO_SUM, 0), 1.75, 0.95);
+  stroke(ctx, chalkPoints(0, WALL_U0, 0), 1.75, 0.95);
+  stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0), 1.75, 0.95);
 
   const dryUntil = shore;
   ctx.strokeStyle = INK;
@@ -215,30 +231,32 @@ function paint(
     ctx.lineWidth = 0.7;
     ctx.globalAlpha = 0.42 + frame.sheet * 0.35;
     ctx.beginPath();
-    ctx.moveTo(xOf(8.1), Math.min(ySea, yCrest));
-    ctx.lineTo(xOf(7.5), yCrest + 0.3);
+    ctx.moveTo(xOf(WALL_U1), Math.min(ySea, yCrest));
+    ctx.lineTo(xOf(WALL_U0), yCrest + 0.3);
     ctx.stroke();
     for (let i = 0; i < lines; i++) {
       const y0 = yCrest + 0.8 + i * 2.6;
       const y1 = y0 + 2.2;
-      const x1 = xOf(7.5) - reach * (0.78 + i * 0.06);
+      const x1 = xOf(WALL_U0) - reach * (0.78 + i * 0.06);
       ctx.beginPath();
-      ctx.moveTo(xOf(7.5), y0);
-      ctx.quadraticCurveTo(xOf(7.5) - reach * 0.4, y0 + 1.6, x1, Math.min(y1, yPool + 1.2));
+      ctx.moveTo(xOf(WALL_U0), y0);
+      ctx.quadraticCurveTo(xOf(WALL_U0) - reach * 0.4, y0 + 1.6, x1, Math.min(y1, yPool + 1.2));
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
 
-  const wallX = xOf(7.5);
-  const wallW = xOf(8.1) - wallX;
-  const wallY = yOf(1);
-  const wallH = yOf(-0.015) - wallY;
-  ctx.strokeStyle = INK;
+  ctx.fillStyle = PAPER;
   ctx.globalAlpha = 1;
+  ctx.fillRect(wallX, wallY, wallW, wallH);
+  ctx.strokeStyle = INK;
   ctx.lineWidth = 4.6;
   ctx.lineJoin = "miter";
   ctx.strokeRect(wallX, wallY, wallW, wallH);
+
+  if (section.mode === "sea") {
+    drawRuns(ctx, WALL_U0, WALL_U1, yCrestWash, 1.4, 0.94);
+  }
 }
 
 export function SectionCanvas({
@@ -252,9 +270,12 @@ export function SectionCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef(input);
+  const repaintStillRef = useRef<(() => void) | null>(null);
+  const heldAmp = resolveSection(input).heldAmp;
 
   useEffect(() => {
     inputRef.current = input;
+    repaintStillRef.current?.();
   }, [input]);
 
   useEffect(() => {
@@ -268,15 +289,12 @@ export function SectionCanvas({
     let grain: HTMLCanvasElement | null = null;
     let grainW = 0;
     let grainH = 0;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    const tick = (now: number) => {
-      if (stopped) return;
+    const draw = (timeS: number) => {
       const cssW = canvas.clientWidth;
       const cssH = canvas.clientHeight;
-      if (cssW < 8 || cssH < 8) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
+      if (cssW < 8 || cssH < 8) return false;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const bw = Math.max(1, Math.round(cssW * dpr));
       const bh = Math.max(1, Math.round(cssH * dpr));
@@ -289,14 +307,45 @@ export function SectionCanvas({
         grainW = bw;
         grainH = bh;
       }
-      paint(ctx, bw, bh, dpr, inputRef.current, (now - t0) / 1000, grain);
+      paint(ctx, bw, bh, dpr, inputRef.current, timeS, grain);
+      return true;
+    };
+
+    const tick = (now: number) => {
+      if (stopped || media.matches) return;
+      if (!draw((now - t0) / 1000)) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
       frame = requestAnimationFrame(tick);
     };
 
-    frame = requestAnimationFrame(tick);
+    const start = () => {
+      cancelAnimationFrame(frame);
+      if (media.matches) {
+        draw(0);
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+
+    repaintStillRef.current = () => {
+      if (!stopped && media.matches) draw(0);
+    };
+
+    const onMotion = () => start();
+    media.addEventListener("change", onMotion);
+    const resize = new ResizeObserver(() => {
+      if (media.matches) draw(0);
+    });
+    resize.observe(canvas);
+    start();
     return () => {
       stopped = true;
       cancelAnimationFrame(frame);
+      media.removeEventListener("change", onMotion);
+      resize.disconnect();
+      repaintStillRef.current = null;
     };
   }, []);
 
@@ -307,6 +356,8 @@ export function SectionCanvas({
       role="img"
       aria-label={label}
       data-section-mode={mode}
+      data-held-amp={heldAmp.toFixed(3)}
+      data-motion="section"
     />
   );
 }

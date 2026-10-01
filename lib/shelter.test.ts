@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { poolDepthM, poolOutline } from "./geography.ts";
-import { QUIET_LABEL, polygonArea, quieterZone } from "./shelter.ts";
+import { polygonArea, quieterZone, QUIET_MAX_AREA_FRAC, QUIET_LABEL } from "./shelter.ts";
 
 test("the quiet label says it is a rough guess", () => {
   assert.equal(QUIET_LABEL, "quieter (rough guess)");
@@ -16,12 +16,14 @@ test("calm wind marks the whole pool quiet", () => {
 });
 
 test("a strong southerly leaves quiet water toward the beach, and a stronger wind shrinks it", () => {
+  const poolArea = polygonArea(poolOutline().map((point) => ({ x: point.x, y: point.y })));
   const moderate = quieterZone({ fromDeg: 180, speedMs: 6, gustMs: 7, compass: "S" });
   const strong = quieterZone({ fromDeg: 180, speedMs: 14, gustMs: 18, compass: "S" });
   assert.ok(moderate && strong);
   assert.equal(moderate.whole, false);
   assert.equal(strong.whole, false);
   assert.ok(polygonArea(strong.polygon) < polygonArea(moderate.polygon));
+  assert.ok(polygonArea(strong.polygon) <= poolArea * QUIET_MAX_AREA_FRAC + 1);
 
   const south = Math.min(...poolOutline().map((point) => point.y));
   const sea = Math.max(...poolOutline().map((point) => point.y));

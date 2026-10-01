@@ -1,5 +1,5 @@
 import type { ChopLevel } from "./chop";
-import { SOFT_BEACH, WORKING_WALL } from "./geography";
+import { WORKING_WALL } from "./geography";
 
 /**
  * Schematic N–S section. Crest is 1. The chalk floor is 0.
@@ -8,23 +8,16 @@ import { SOFT_BEACH, WORKING_WALL } from "./geography";
  * wall in geography (crest minus inferred chalk). Horizontal ratios are
  * beach : pool : wall : sea. Wall thickness is exaggerated.
  *
- * The beach is a short rise, then a flat floor. A surveyed 12% over 35 m
- * would leave this frame, so the ink rise is capped. It is not a wedge
- * running down through the pool.
+ * Beach ink is a gradual quadratic slope from the landward lip down to the
+ * pool floor at the wall face — not a cliff step and flat shelf.
  */
 export const RATIO = { beach: 2.5, pool: 5, wall: 0.6, sea: 3.5 } as const;
 export const RATIO_SUM = RATIO.beach + RATIO.pool + RATIO.wall + RATIO.sea;
 export const HELD_FULL = 0.93;
 export const WALL_HEIGHT_M = WORKING_WALL.wallAboveChalkM;
 export const WALL_FACE_U = RATIO.beach + RATIO.pool + RATIO.wall;
-
-const CLIFF_RUN = 0.28;
-
-/** Page-fitted top of the soft beach, in schematic units. Crest is 1. */
-function inkBeachTop(): number {
-  const rise = (SOFT_BEACH.grade * SOFT_BEACH.runM) / WALL_HEIGHT_M;
-  return Math.min(1.12, 0.7 + rise * 0.19);
-}
+export const WALL_U0 = RATIO.beach + RATIO.pool;
+export const WALL_U1 = WALL_U0 + RATIO.wall;
 
 export type PictureMode = "pool" | "overflow" | "sea" | "falling";
 
@@ -52,6 +45,12 @@ export type ResolvedSection = {
   chopLevel: ChopLevel;
   poolBias: number;
   seaBias: number;
+  /**
+   * Schematic amplitude of wind chop on held water (pool and falling).
+   * The sea side already has marine swell; this is the same chop pilot
+   * stretched so the pool surface can be read on its own.
+   */
+  heldAmp: number;
 };
 
 const CANONICAL: Record<PictureMode, { sea: number; amp: number; period: number }> = {
@@ -64,26 +63,15 @@ const CANONICAL: Record<PictureMode, { sea: number; amp: number; period: number 
 const ONSHORE = new Set(["N", "NNE", "NE", "ENE", "NW", "NNW", "WNW"]);
 const SHELTER = new Set(["S", "SSE", "SSW", "SW", "WSW"]);
 
-/**
- * Chalk profile. A short cliff step, a beach down to the landward lip,
- * a flat pool floor, then a slight drop on the foreshore.
- */
+/** Soft chalk profile. Higher inland, easing to the floor at the wall, then a slight drop seaward. */
 export function chalkSchematic(u: number): number {
-  const lip = RATIO.beach;
-  const sea0 = RATIO.beach + RATIO.pool + RATIO.wall;
-  const beachTop = inkBeachTop();
-  const cliffTop = Math.min(1.42, beachTop + 0.26);
-  if (u <= 0) return cliffTop;
-  if (u < CLIFF_RUN) {
-    const t = u / CLIFF_RUN;
-    return cliffTop + (beachTop - cliffTop) * t;
+  if (u <= 0) return 1.22;
+  if (u < WALL_U0) {
+    const h = 1.22 - 0.339 * u + 0.0235 * u * u;
+    return h < 0 ? 0 : h;
   }
-  if (u < lip) {
-    const t = (u - CLIFF_RUN) / (lip - CLIFF_RUN);
-    return beachTop * (1 - t);
-  }
-  if (u <= sea0) return 0;
-  const t = Math.min(1, (u - sea0) / (RATIO_SUM - sea0));
+  if (u <= WALL_U1) return 0;
+  const t = Math.min(1, (u - WALL_U1) / (RATIO_SUM - WALL_U1));
   return -0.08 * t;
 }
 
@@ -153,6 +141,52 @@ export function chopMotion(level: ChopLevel, bias: number) {
   };
 }
 
+/**
+ * Base ripple on held water, before shelter and a little extra from the
+ * mean wind. Level 1 stays nearly flat. Level 5 is a rough surface that
+ * still has to live under the crest.
+ */
+const HELD_AMP: Record<ChopLevel, number> = {
+  1: 0.005,
+  2: 0.03,
+  3: 0.072,
+  4: 0.108,
+  5: 0.142,
+};
+
+/** Wind chop amplitude for the held pool surface. `bias` is the pool side of `chopBias`. */
+export function heldSurfaceAmp(level: ChopLevel, bias: number, windMph: number | null): number {
+  const mph = windMph != null && Number.isFinite(windMph) ? Math.max(0, windMph) : 0;
+  const boost = 1 + Math.min(0.48, Math.max(0, mph - 14) / 64);
+  const shelter = Number.isFinite(bias) ? Math.max(0, bias) : 1;
+  return HELD_AMP[level] * boost * shelter;
+}
+
+/** Same two-wave ripple the sea strokes use. `amp` is already in schematic units. */
+export function surfaceRipple(u: number, timeS: number, level: ChopLevel, amp: number): number {
+  const motion = chopMotion(level, 1);
+  const a = Math.sin(u * (3.2 + level * 0.55) + timeS * motion.speed);
+  const b = Math.sin(u * (6.8 + level * 0.9) - timeS * motion.speed * 1.33 + 0.6);
+  const mix = motion.wobble * 0.28;
+  return (amp * (a + mix * b)) / (1 + mix);
+}
+
+/**
+ * Held-water ripple. Crests are the smaller half so a gale stays under the
+ * wall; the troughs carry the roughness.
+ */
+export function heldRipple(u: number, timeS: number, level: ChopLevel, amp: number): number {
+  const raw = surfaceRipple(u, timeS, level, amp);
+  return raw > 0 ? raw * 0.42 : raw;
+}
+
+/** Ink cap for held water. Crest of the wall is 1. */
+export const HELD_SURFACE_CAP = 0.972;
+
+export function heldSurface(still: number, ripple: number): number {
+  return Math.min(HELD_SURFACE_CAP, still + ripple);
+}
+
 function clampSea(schematic: number): number {
   return Math.min(1.38, Math.max(-0.1, schematic));
 }
@@ -177,6 +211,7 @@ export function resolveMode(input: SectionInput): PictureMode {
 export function resolveSection(input: SectionInput): ResolvedSection {
   const mode = resolveMode(input);
   const bias = chopBias(input.compass);
+  const heldAmp = heldSurfaceAmp(input.chopLevel, bias.pool, input.windMph);
   if (input.mode) {
     const canon = CANONICAL[input.mode];
     return {
@@ -188,6 +223,7 @@ export function resolveSection(input: SectionInput): ResolvedSection {
       chopLevel: input.chopLevel,
       poolBias: bias.pool,
       seaBias: bias.sea,
+      heldAmp,
     };
   }
   const sea =
@@ -211,6 +247,7 @@ export function resolveSection(input: SectionInput): ResolvedSection {
     chopLevel: input.chopLevel,
     poolBias: bias.pool,
     seaBias: bias.sea,
+    heldAmp,
   };
 }
 

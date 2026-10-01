@@ -20,6 +20,10 @@ export const QUIET_CALM_MS = 2.5;
 /** By this speed the patch has shrunk to a lee strip. */
 export const QUIET_STRONG_MS = 14;
 
+/** Lee hatch should stay under this share of the pool plan area. */
+export const QUIET_MAX_AREA_FRAC = 0.2;
+
+/** @deprecated No longer shown on the glance plan. */
 export const QUIET_LABEL = "quieter (rough guess)";
 
 export type QuietZone = {
@@ -49,9 +53,20 @@ export function quietFraction(speedMs: number, cliffShelter: boolean): number {
   if (!(speedMs > QUIET_CALM_MS)) return 1;
   const t = Math.min(1, (speedMs - QUIET_CALM_MS) / (QUIET_STRONG_MS - QUIET_CALM_MS));
   const eased = t * t * (3 - 2 * t);
-  const wide = cliffShelter ? 0.84 : 0.72;
-  const thin = cliffShelter ? 0.36 : 0.18;
+  const wide = cliffShelter ? 0.22 : 0.18;
+  const thin = cliffShelter ? 0.12 : 0.08;
   return thin + (1 - eased) * (wide - thin);
+}
+
+function zoneForFraction(outline: PlanPoint[], fromDeg: number, fraction: number): PlanPoint[] {
+  const rad = (fromDeg * Math.PI) / 180;
+  const upE = Math.sin(rad);
+  const upN = Math.cos(rad);
+  const dots = outline.map((point) => point.x * upE + point.y * upN);
+  const max = Math.max(...dots);
+  const min = Math.min(...dots);
+  const cut = max - fraction * (max - min);
+  return clipHalfPlane(outline, upE, upN, cut);
 }
 
 function clipHalfPlane(poly: PlanPoint[], nx: number, ny: number, minDot: number): PlanPoint[] {
@@ -130,14 +145,14 @@ export function quieterZone(input: {
   if (fraction >= 0.999) return { whole: true, fraction: 1, polygon: outline };
   if (input.fromDeg == null || !Number.isFinite(input.fromDeg)) return null;
 
-  const rad = (input.fromDeg * Math.PI) / 180;
-  const upE = Math.sin(rad);
-  const upN = Math.cos(rad);
-  const dots = outline.map((point) => point.x * upE + point.y * upN);
-  const max = Math.max(...dots);
-  const min = Math.min(...dots);
-  const cut = max - fraction * (max - min);
-  const polygon = clipHalfPlane(outline, upE, upN, cut);
+  let useFraction = fraction;
+  const poolArea = polygonArea(outline);
+  const maxArea = poolArea * QUIET_MAX_AREA_FRAC;
+  let polygon = zoneForFraction(outline, input.fromDeg, useFraction);
+  for (let step = 0; step < 24 && polygon.length >= 3 && polygonArea(polygon) > maxArea; step++) {
+    useFraction *= 0.88;
+    polygon = zoneForFraction(outline, input.fromDeg, useFraction);
+  }
   if (polygon.length < 3) return null;
-  return { whole: false, fraction, polygon };
+  return { whole: false, fraction: useFraction, polygon };
 }

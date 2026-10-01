@@ -8,6 +8,10 @@ import {
   chopBias,
   chopMotion,
   frameLevels,
+  HELD_SURFACE_CAP,
+  heldRipple,
+  heldSurface,
+  heldSurfaceAmp,
   overtopStrength,
   resolveSection,
   segmentEdges,
@@ -45,16 +49,16 @@ test("horizontal ratios are beach, pool, wall, sea", () => {
   assert.ok(Math.abs(edges.wallW / 1160 - 0.6 / 11.6) < 1e-9);
 });
 
-test("chalk is a short beach then a flat pool floor", () => {
+test("chalk is a gradual beach slope down to the wall", () => {
   assert.ok(chalkSchematic(0) > 1);
   assert.ok(chalkSchematic(0) < 1.5);
-  assert.equal(chalkSchematic(RATIO.beach), 0);
-  assert.equal(chalkSchematic(5), 0);
-  assert.equal(chalkSchematic(7.5), 0);
+  assert.ok(chalkSchematic(RATIO.beach) > 0.35 && chalkSchematic(RATIO.beach) < 0.65);
+  assert.ok(chalkSchematic(5) > 0.05 && chalkSchematic(5) < 0.2);
+  assert.ok(Math.abs(chalkSchematic(7.5)) < 0.02);
   assert.equal(chalkSchematic(8.1), 0);
   assert.ok(chalkSchematic(11.6) < 0 && chalkSchematic(11.6) > -0.2);
   let prev = chalkSchematic(0);
-  for (let u = 0.25; u <= RATIO.beach; u += 0.25) {
+  for (let u = 0.25; u <= 7.5; u += 0.25) {
     const h = chalkSchematic(u);
     assert.ok(h <= prev + 1e-9, `chalk rose at ${u}`);
     prev = h;
@@ -183,4 +187,37 @@ test("a measured wave wins over the wind stand-in", () => {
   assert.equal(swellMetres(0.8, 30), 0.8);
   assert.ok(swellMetres(null, 16) > 0.4);
   assert.ok(swellMetres(null, null) > 0);
+});
+
+test("held pool chop grows with the chop level and the mean wind", () => {
+  const calm = heldSurfaceAmp(1, 1, 4);
+  const splash = heldSurfaceAmp(3, 1, 16);
+  const gale = heldSurfaceAmp(5, 1, 45);
+  assert.ok(calm < 0.01);
+  assert.ok(splash > calm * 6);
+  assert.ok(gale > splash);
+  assert.ok(heldSurfaceAmp(5, 1, 45) > heldSurfaceAmp(5, 1, 12));
+  const lee = heldSurfaceAmp(5, chopBias("SW").pool, 40);
+  const onshore = heldSurfaceAmp(5, chopBias("N").pool, 40);
+  assert.ok(lee < onshore);
+  assert.equal(resolveSection(input({ mode: "pool", chopLevel: 5, windMph: 40, compass: "N" })).heldAmp, onshore);
+});
+
+test("held pool ripples stay under the crest and roughen in a gale", () => {
+  const amp = heldSurfaceAmp(5, 1, 40);
+  let peak = 0;
+  let trough = 0;
+  for (let u = 1.6; u <= 7.4; u += 0.04) {
+    const ripple = heldRipple(u, 0.8, 5, amp);
+    peak = Math.max(peak, ripple);
+    trough = Math.min(trough, ripple);
+  }
+  assert.ok(peak > 0.015);
+  assert.ok(trough < -peak);
+  assert.ok(heldSurface(HELD_FULL, peak) <= HELD_SURFACE_CAP);
+  assert.ok(heldSurface(HELD_FULL, peak) < 1);
+  const calmPeak = Math.max(
+    ...[2, 3.5, 5, 6.5].map((u) => heldRipple(u, 0.8, 1, heldSurfaceAmp(1, 1, 3))),
+  );
+  assert.ok(calmPeak < peak * 0.2);
 });
