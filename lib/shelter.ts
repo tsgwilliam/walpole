@@ -14,6 +14,22 @@ import { poolOutline, type Xyz } from "./geography";
 
 type PlanPoint = { x: number; y: number };
 
+/** Wind-aligned graduated chop shelter for the plan (not the legacy quiet hatch). */
+export type PlanShelterInput = {
+  fromDeg: number;
+  compass: string | null;
+  /** False when the seaward wall is submerged and no longer shelters the pool. */
+  wallShelters: boolean;
+};
+
+const WALL_CALM_FRAC = 0.1;
+const BEACH_CALM_FRAC = 0.3;
+const SIDE_CALM_FRAC = 0.1;
+/** Most-sheltered chop still draws — this is the ink strength floor (opacity scale). */
+export const SHELTER_FADE_MIN = 0.22;
+/** After the calm band, reach full chop over this share of pool depth. */
+export const SHELTER_RAMP_FRAC = 0.32;
+
 /** At or below this mean, the whole pool is the quiet patch. Metres per second. */
 export const QUIET_CALM_MS = 2.5;
 
@@ -130,6 +146,69 @@ export function polygonArea(poly: PlanPoint[]): number {
  * Quieter patch in plan metres (X east, Y north, origin on the seaward crest).
  * Null when the wind has strength but no direction — no invented lee.
  */
+/** 0 at the upwind edge, 1 at the downwind edge, along the wind-from axis. */
+export function planUpwindFraction(point: PlanPoint, fromDeg: number): number {
+  const rad = (fromDeg * Math.PI) / 180;
+  const upE = Math.sin(rad);
+  const upN = Math.cos(rad);
+  const outline = outlinePoints();
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of outline) {
+    const dot = p.x * upE + p.y * upN;
+    min = Math.min(min, dot);
+    max = Math.max(max, dot);
+  }
+  const span = max - min;
+  if (!(span > 1e-6)) return 0.5;
+  const dot = point.x * upE + point.y * upN;
+  return Math.min(1, Math.max(0, (max - dot) / span));
+}
+
+/**
+ * Calm-band width as a share of pool depth along the wind. The seaward wall
+ * uses a narrow band; the open beach and cliff use a wider one.
+ */
+export function planCalmBandFraction(fromDeg: number, wallShelters: boolean): number {
+  const fromN = Math.cos((fromDeg * Math.PI) / 180);
+  if (fromN > 0.35) return wallShelters ? WALL_CALM_FRAC : 0;
+  if (fromN < -0.35) return BEACH_CALM_FRAC;
+  return SIDE_CALM_FRAC;
+}
+
+/**
+ * 0 upwind (most sheltered) → 1 downwind (full forecast chop). Strokes stay
+ * visible; plan ink fades with this strength instead of dropping out.
+ */
+export function graduatedShelterStrength(
+  point: PlanPoint,
+  input: PlanShelterInput,
+  meanMs: number,
+): number {
+  const ms = Number.isFinite(meanMs) ? Math.max(0, meanMs) : 0;
+  if (ms < QUIET_CALM_MS) return SHELTER_FADE_MIN;
+  if (!Number.isFinite(input.fromDeg)) return 1;
+  const calmFrac = planCalmBandFraction(input.fromDeg, input.wallShelters);
+  if (calmFrac <= 0) return 1;
+  const u = planUpwindFraction(point, input.fromDeg);
+  if (u <= calmFrac) return 0;
+  const rampEnd = Math.min(1, calmFrac + SHELTER_RAMP_FRAC);
+  if (u >= rampEnd) return 1;
+  const t = (u - calmFrac) / (rampEnd - calmFrac);
+  const eased = t * t * t;
+  return eased;
+}
+
+/** @deprecated Use graduatedShelterStrength for ink fade. */
+export function graduatedShelterMultiplier(
+  point: PlanPoint,
+  input: PlanShelterInput,
+  meanMs: number,
+): number {
+  const s = graduatedShelterStrength(point, input, meanMs);
+  return SHELTER_FADE_MIN + s * (1 - SHELTER_FADE_MIN);
+}
+
 export function quieterZone(input: {
   fromDeg: number | null;
   speedMs: number;

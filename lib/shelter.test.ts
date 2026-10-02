@@ -1,7 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { poolDepthM, poolOutline } from "./geography.ts";
-import { polygonArea, quieterZone, QUIET_MAX_AREA_FRAC, QUIET_LABEL } from "./shelter.ts";
+import {
+  graduatedShelterStrength,
+  graduatedShelterMultiplier,
+  planCalmBandFraction,
+  planUpwindFraction,
+  polygonArea,
+  quieterZone,
+  QUIET_MAX_AREA_FRAC,
+  QUIET_LABEL,
+} from "./shelter.ts";
+
+test("graduated shelter is calm upwind and ramps to full chop downwind", () => {
+  const north = { fromDeg: 0, compass: "N", wallShelters: true };
+  const wall = { x: 0, y: poolOutline()[0].y };
+  const beach = { x: 0, y: poolOutline()[2].y };
+  const calmWall = graduatedShelterStrength(wall, north, 6);
+  const openBeach = graduatedShelterStrength(beach, north, 6);
+  assert.ok(calmWall < openBeach);
+  assert.equal(calmWall, 0);
+  assert.equal(openBeach, 1);
+  assert.ok(planCalmBandFraction(0, true) === 0.1);
+  assert.equal(planCalmBandFraction(0, false), 0);
+  assert.equal(planCalmBandFraction(180, true), 0.3);
+  assert.ok(planUpwindFraction(wall, 0) < planUpwindFraction(beach, 0));
+});
 
 test("the quiet label says it is a rough guess", () => {
   assert.equal(QUIET_LABEL, "quieter (rough guess)");

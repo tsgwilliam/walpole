@@ -1,6 +1,11 @@
 import type { ChopLevel } from "./chop";
 import type { PlanPoint } from "./pool-plan";
-import { polygonArea } from "./shelter";
+import {
+  graduatedShelterStrength,
+  polygonArea,
+  SHELTER_FADE_MIN,
+  type PlanShelterInput,
+} from "./shelter";
 
 /** Vertical gap between wind-aligned chop strokes, in plan SVG units. */
 export const PLAN_CHOP_ROW_GAP = 13;
@@ -22,36 +27,30 @@ export function planBaseRoughness(level: ChopLevel, meanMs: number): number {
   return Math.max(fromChop, 0.22);
 }
 
-function pointInPoly(point: PlanPoint, poly: PlanPoint[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x;
-    const yi = poly[i].y;
-    const xj = poly[j].x;
-    const yj = poly[j].y;
-    const intersect =
-      yi > point.y !== yj > point.y && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi + 1e-12) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
 /**
- * Roughness 0–1 at a plan point. Quiet polygon is calm; outside scales with chop.
- * `whole` quiet still leaves a faint wash when chop is high.
+ * Roughness 0–1 at a plan point. Optional graduated shelter scales chop upwind
+ * to downwind; without shelter the forecast chop fills the pool.
  */
 export function roughnessAt(
   point: PlanPoint,
   chopLevel: ChopLevel,
-  quiet: { whole: boolean; polygon: PlanPoint[] } | null,
+  shelter: PlanShelterInput | null,
   meanMs = 0,
 ): number {
   const base = planBaseRoughness(chopLevel, meanMs);
   if (base < 0.02) return 0;
-  if (!quiet) return base;
-  if (quiet.whole) return base * 0.12;
-  if (pointInPoly(point, quiet.polygon)) return base * 0.06;
   return base;
+}
+
+/** Fade strength 0–1 for sheltered plan ink (opacity / width), not amplitude. */
+export function planShelterFade(
+  point: PlanPoint,
+  shelter: PlanShelterInput | null,
+  meanMs: number,
+): number {
+  if (!shelter) return 1;
+  const strength = graduatedShelterStrength(point, shelter, meanMs);
+  return SHELTER_FADE_MIN + strength * (1 - SHELTER_FADE_MIN);
 }
 
 /** Plan ink strength from mean wind (m/s). Calm stays soft; a gale does not pile on. */

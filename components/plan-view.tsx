@@ -9,6 +9,7 @@ import {
   chopLocalToScreen,
   chopRoughness,
   planChopInk,
+  planShelterFade,
   planWindRoughBoost,
   roughnessAt,
   waveScanline,
@@ -20,7 +21,7 @@ import {
   poolPlanCorners,
   type PlanPoint,
 } from "@/lib/pool-plan";
-import { quieterZone, type QuietZone } from "@/lib/shelter";
+import { quieterZone, type PlanShelterInput, type QuietZone } from "@/lib/shelter";
 import { windGlyphMark } from "@/lib/wind-glyph";
 
 const VIEW_W = 300;
@@ -153,6 +154,7 @@ function localToPlan(
 
 function RoughnessField({
   chopLevel,
+  shelter,
   zone,
   phase,
   travel,
@@ -160,6 +162,7 @@ function RoughnessField({
   meanMs,
 }: {
   chopLevel: ChopLevel;
+  shelter: PlanShelterInput | null;
   zone: QuietZone | null;
   phase: number;
   travel: number;
@@ -175,13 +178,6 @@ function RoughnessField({
     const ne = planProject(corners.ne, layout);
     const se = planProject(corners.se, layout);
     const sw = planProject(corners.sw, layout);
-    const quietForRough =
-      zone == null
-        ? null
-        : zone.whole
-          ? { whole: true, polygon: [] as PlanPoint[] }
-          : { whole: false, polygon: zone.polygon };
-
     const reach = Math.max(
       Math.hypot(nw.x - mid.x, nw.y - mid.y),
       Math.hypot(ne.x - mid.x, ne.y - mid.y),
@@ -190,23 +186,28 @@ function RoughnessField({
     );
     const half = reach * 1.15;
     const stepY = PLAN_CHOP_ROW_GAP;
-    const stepX = 11;
 
     for (let ly = -half; ly <= half; ly += stepY) {
-      let rough = 0;
-      for (let lx = -half; lx <= half; lx += stepX) {
-        const sample = roughnessAt(localToPlan(lx, ly, mid, travel, layout), chopLevel, quietForRough, meanMs ?? 0);
-        rough = Math.max(rough, sample + windBoost * (1 - sample * 0.35));
-      }
+      const planPoint = localToPlan(0, ly, mid, travel, layout);
+      const fade = planShelterFade(planPoint, shelter, meanMs ?? 0);
+      const sample = roughnessAt(planPoint, chopLevel, shelter, meanMs ?? 0);
+      const rough =
+        sample < 0.08 ? sample : sample + windBoost * fade * (1 - sample * 0.35);
       const ink = planChopInk(rough);
       if (!ink) continue;
       const drift = phase + ly * 0.04;
       const d = waveScanline(-half, half, ly, ink.amp, drift, 6);
-      if (d) rows.push({ d, opacity: ink.opacity, width: ink.width });
+      if (d) {
+        rows.push({
+          d,
+          opacity: ink.opacity * fade,
+          width: ink.width * (0.62 + 0.38 * fade),
+        });
+      }
     }
 
     return rows;
-  }, [chopLevel, zone, phase, travel, mid, meanMs]);
+  }, [chopLevel, shelter, zone, phase, travel, mid, meanMs]);
 
   return (
     <g clipPath="url(#pool-clip)">
@@ -234,6 +235,7 @@ function PlanDrawing({
   gustMs,
   submerged,
   zone,
+  shelter,
   chopLevel,
   phase,
 }: {
@@ -242,6 +244,7 @@ function PlanDrawing({
   gustMs: number | null;
   submerged: boolean;
   zone: QuietZone | null;
+  shelter: PlanShelterInput | null;
   chopLevel: ChopLevel;
   phase: number;
 }) {
@@ -286,6 +289,7 @@ function PlanDrawing({
       ) : null}
       <RoughnessField
         chopLevel={chopLevel}
+        shelter={shelter}
         zone={zone}
         phase={phase}
         travel={travel ?? 0}
@@ -363,6 +367,14 @@ export function PlanView({
           compass: wind.hasDirection ? wind.compass : null,
         })
       : null;
+  const shelter: PlanShelterInput | null =
+    wind?.hasDirection && wind.directionDeg != null && Number.isFinite(wind.directionDeg)
+      ? {
+          fromDeg: wind.directionDeg,
+          compass: wind.compass,
+          wallShelters: !submerged,
+        }
+      : null;
 
   return (
     <figure
@@ -381,6 +393,7 @@ export function PlanView({
         gustMs={gustMs != null && Number.isFinite(gustMs) ? gustMs : null}
         submerged={submerged}
         zone={zone}
+        shelter={shelter}
         chopLevel={chopLevel}
         phase={reduced ? 0 : phase}
       />

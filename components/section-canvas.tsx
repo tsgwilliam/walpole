@@ -186,31 +186,30 @@ function paint(
 
   const ySurface = (u: number) => yOf(surface(u));
 
-  const band = (u0: number, u1: number) => {
+  const waveY = (depth: number) => (u: number) => {
+    if (
+      section.mode === "sea" &&
+      u >= WALL_U0 &&
+      u <= WALL_U1 &&
+      !seaWashClearsWall(surface(u), depth, PX)
+    ) {
+      return Number.NaN;
+    }
+    return ySurface(u) + depth;
+  };
+
+  const waveBand = (u0: number, u1: number) => {
     if (u1 - u0 < 0.08) return;
-    drawRuns(ctx, u0, u1, ySurface, 1.55, 0.92);
+    drawRuns(ctx, u0, u1, waveY(0), 1.55, 0.92);
     for (let i = 1; i <= motion.lines; i++) {
       const depth = 5 + i * (6 + section.chopLevel * 0.6);
       const alpha = Math.max(0.1, 0.48 - i * 0.05);
-      drawRuns(ctx, u0, u1, (u) => ySurface(u) + depth, 0.8, alpha);
+      drawRuns(ctx, u0, u1, waveY(depth), 0.8, alpha);
     }
   };
 
-  /** Strokes over the crest only. Anything at or below the crest would cut the wall. */
-  const washOverCrest = (u0: number, u1: number) => {
-    if (u1 - u0 < 0.08) return;
-    const yIfClear = (depth: number) => (u: number) =>
-      seaWashClearsWall(surface(u), depth, PX) ? ySurface(u) + depth : Number.NaN;
-    drawRuns(ctx, u0, u1, yIfClear(0), 1.45, 0.94);
-    for (let i = 1; i <= motion.lines; i++) {
-      const depth = 5 + i * (6 + section.chopLevel * 0.6);
-      const alpha = Math.max(0.12, 0.5 - i * 0.045);
-      drawRuns(ctx, u0, u1, yIfClear(depth), 0.85, alpha);
-    }
-  };
-
-  band(Math.min(shore, WALL_U0), WALL_U0);
-  band(WALL_U1, RATIO_SUM);
+  waveBand(Math.min(shore, WALL_U0), WALL_U0);
+  if (section.mode !== "sea") waveBand(WALL_U1, RATIO_SUM);
 
   stroke(ctx, chalkPoints(0, WALL_U0, 0), 1.75, 0.95);
   stroke(ctx, chalkPoints(WALL_U1, RATIO_SUM, 0), 1.75, 0.95);
@@ -260,9 +259,20 @@ function paint(
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.2;
   ctx.lineJoin = "miter";
-  ctx.strokeRect(wallX, wallY, wallW, wallH);
+  if (section.mode === "sea") {
+    ctx.beginPath();
+    ctx.moveTo(wallX, wallY + wallH);
+    ctx.lineTo(wallX, wallY);
+    ctx.moveTo(wallX + wallW, wallY);
+    ctx.lineTo(wallX + wallW, wallY + wallH);
+    ctx.moveTo(wallX, wallY + wallH);
+    ctx.lineTo(wallX + wallW, wallY + wallH);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(wallX, wallY, wallW, wallH);
+  }
 
-  if (section.mode === "sea") washOverCrest(WALL_U0, WALL_U1);
+  if (section.mode === "sea") waveBand(WALL_U0, RATIO_SUM);
 }
 
 export function SectionCanvas({
