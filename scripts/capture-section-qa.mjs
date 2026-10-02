@@ -116,9 +116,10 @@ async function assertSeaWall(page) {
     }
     let wash = 0;
     const above0 = Math.max(0, wall.y0 - 22);
+    const crestBand = wall.y0 + 3;
     const x0 = cols[Math.floor(cols.length * 0.25)].x;
     const x1 = cols[Math.floor(cols.length * 0.75)].x;
-    for (let y = above0; y < wall.y0 - 1; y++) {
+    for (let y = above0; y <= crestBand; y++) {
       for (let x = x0; x <= x1; x++) {
         const i = (y * width + x) * 4;
         const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
@@ -150,9 +151,12 @@ await captureSection(page, `${base}/?mode=pool`, "section-beach-slope.png");
 await captureFull(page, `${base}/?wind=90,10,14&mode=pool`, "wind-90.png");
 const light = await capturePlan(page, `${base}/?demo=storm&mode=sea&wind=225,3.2,4.8`, "plan-sparse-chop.png");
 const gale = await capturePlan(page, `${base}/?wind=90,10,14&mode=pool`, "plan-wind-90.png");
+const wallLee = await capturePlan(page, `${base}/?demo=storm&mode=pool&wind=0,8,10`, "plan-shelter-wall-north.png");
+const cliffLee = await capturePlan(page, `${base}/?demo=storm&mode=pool&wind=180,8,10`, "plan-shelter-cliff-south.png");
+await captureSection(page, `${base}/?demo=storm&mode=pool`, "section-pool-mode.png");
 
 await browser.close();
 console.log(
-  `Wrote section-sea-wash.png, section-beach-slope.png, wind-90.png, plan-sparse-chop.png (${light} strokes), plan-wind-90.png (${gale} strokes)`,
+  `Wrote section-sea-wash.png, section-beach-slope.png, section-pool-mode.png, wind-90.png, plan-sparse-chop.png (${light} strokes), plan-wind-90.png (${gale} strokes), plan-shelter-wall-north.png (${wallLee} strokes), plan-shelter-cliff-south.png (${cliffLee} strokes)`,
 );
 console.log("sea wall", JSON.stringify(wall));

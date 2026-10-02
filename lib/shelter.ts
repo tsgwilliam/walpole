@@ -14,6 +14,20 @@ import { poolOutline, type Xyz } from "./geography";
 
 type PlanPoint = { x: number; y: number };
 
+/** Wind-aligned graduated chop shelter for the plan (not the legacy quiet hatch). */
+export type PlanShelterInput = {
+  fromDeg: number;
+  compass: string | null;
+  /** False when the seaward wall is submerged and no longer shelters the pool. */
+  wallShelters: boolean;
+};
+
+const WALL_CALM_FRAC = 0.1;
+const BEACH_CALM_FRAC = 0.3;
+const SIDE_CALM_FRAC = 0.1;
+/** Calm-band floor as a share of forecast chop — still inks at ~3 m/s. */
+const CALM_ROUGHNESS_MULT = 0.42;
+
 /** At or below this mean, the whole pool is the quiet patch. Metres per second. */
 export const QUIET_CALM_MS = 2.5;
 
@@ -130,6 +144,57 @@ export function polygonArea(poly: PlanPoint[]): number {
  * Quieter patch in plan metres (X east, Y north, origin on the seaward crest).
  * Null when the wind has strength but no direction — no invented lee.
  */
+/** 0 at the upwind edge, 1 at the downwind edge, along the wind-from axis. */
+export function planUpwindFraction(point: PlanPoint, fromDeg: number): number {
+  const rad = (fromDeg * Math.PI) / 180;
+  const upE = Math.sin(rad);
+  const upN = Math.cos(rad);
+  const outline = outlinePoints();
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of outline) {
+    const dot = p.x * upE + p.y * upN;
+    min = Math.min(min, dot);
+    max = Math.max(max, dot);
+  }
+  const span = max - min;
+  if (!(span > 1e-6)) return 0.5;
+  const dot = point.x * upE + point.y * upN;
+  return Math.min(1, Math.max(0, (max - dot) / span));
+}
+
+/**
+ * Calm-band width as a share of pool depth along the wind. The seaward wall
+ * uses a narrow band; the open beach and cliff use a wider one.
+ */
+export function planCalmBandFraction(fromDeg: number, wallShelters: boolean): number {
+  const fromN = Math.cos((fromDeg * Math.PI) / 180);
+  if (fromN > 0.35) return wallShelters ? WALL_CALM_FRAC : 0;
+  if (fromN < -0.35) return BEACH_CALM_FRAC;
+  return SIDE_CALM_FRAC;
+}
+
+/**
+ * Continuous 0–1 multiplier for plan chop roughness. Calm sits upwind; the
+ * lee ramps smoothly to full forecast roughness.
+ */
+export function graduatedShelterMultiplier(
+  point: PlanPoint,
+  input: PlanShelterInput,
+  meanMs: number,
+): number {
+  const ms = Number.isFinite(meanMs) ? Math.max(0, meanMs) : 0;
+  if (ms < QUIET_CALM_MS) return CALM_ROUGHNESS_MULT;
+  if (!Number.isFinite(input.fromDeg)) return 1;
+  const calmFrac = planCalmBandFraction(input.fromDeg, input.wallShelters);
+  if (calmFrac <= 0) return 1;
+  const u = planUpwindFraction(point, input.fromDeg);
+  if (u <= calmFrac) return CALM_ROUGHNESS_MULT;
+  const t = (u - calmFrac) / (1 - calmFrac);
+  const eased = t * t * (3 - 2 * t);
+  return CALM_ROUGHNESS_MULT + eased * (1 - CALM_ROUGHNESS_MULT);
+}
+
 export function quieterZone(input: {
   fromDeg: number | null;
   speedMs: number;

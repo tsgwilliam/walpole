@@ -199,8 +199,11 @@ function paint(
   /** Strokes over the crest only. Anything at or below the crest would cut the wall. */
   const washOverCrest = (u0: number, u1: number) => {
     if (u1 - u0 < 0.08) return;
-    const yIfClear = (depth: number) => (u: number) =>
-      seaWashClearsWall(surface(u), depth, PX) ? ySurface(u) + depth : Number.NaN;
+    const crestInkY = yOf(1);
+    const yIfClear = (depth: number) => (u: number) => {
+      if (!seaWashClearsWall(surface(u), depth, PX)) return Number.NaN;
+      return Math.max(ySurface(u) + depth, crestInkY);
+    };
     drawRuns(ctx, u0, u1, yIfClear(0), 1.45, 0.94);
     for (let i = 1; i <= motion.lines; i++) {
       const depth = 5 + i * (6 + section.chopLevel * 0.6);
