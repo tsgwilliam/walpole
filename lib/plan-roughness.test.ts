@@ -7,11 +7,12 @@ test("a light breeze still inks sparse chop, including a sheltered step-down", (
   const open = roughnessAt({ x: 0, y: -40 }, 2, null, 3.2);
   const northWind = { fromDeg: 0, compass: "N", wallShelters: true };
   const sheltered = roughnessAt({ x: 0, y: poolPlanCorners().nw.y }, 2, northWind, 3.2);
-  const exposed = roughnessAt({ x: 0, y: -40 }, 1, northWind, 3.2);
+  const beach = poolPlanCorners().se;
+  const exposed = roughnessAt(beach, 2, northWind, 3.2);
   assert.ok(open >= 0.22);
-  assert.ok(sheltered >= 0.08);
-  assert.ok(exposed > sheltered);
-  const ink = planChopInk(sheltered);
+  assert.ok(sheltered < exposed * 0.35);
+  assert.ok(exposed >= 0.22);
+  const ink = planChopInk(exposed);
   assert.ok(ink);
   assert.ok(ink.opacity >= 0.45);
   assert.ok(ink.width >= 1.1);

@@ -185,19 +185,16 @@ function RoughnessField({
     );
     const half = reach * 1.15;
     const stepY = PLAN_CHOP_ROW_GAP;
-    const stepX = 11;
 
     for (let ly = -half; ly <= half; ly += stepY) {
-      let rough = 0;
-      for (let lx = -half; lx <= half; lx += stepX) {
-        const sample = roughnessAt(
-          localToPlan(lx, ly, mid, travel, layout),
-          chopLevel,
-          shelter,
-          meanMs ?? 0,
-        );
-        rough = Math.max(rough, sample + windBoost * (1 - sample * 0.35));
-      }
+      const sample = roughnessAt(
+        localToPlan(0, ly, mid, travel, layout),
+        chopLevel,
+        shelter,
+        meanMs ?? 0,
+      );
+      const rough =
+        sample < 0.08 ? sample : sample + windBoost * (1 - sample * 0.35);
       const ink = planChopInk(rough);
       if (!ink) continue;
       const drift = phase + ly * 0.04;

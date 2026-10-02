@@ -126,10 +126,33 @@ async function assertSeaWall(page) {
         if (lum < 220) wash += 1;
       }
     }
+    const xL = cols[0].x;
+    const xR = cols[cols.length - 1].x;
+    let maxPaperRun = 0;
+    let run = 0;
+    for (let y = wall.y0 - 1; y >= Math.max(0, wall.y0 - 40); y--) {
+      let ink = false;
+      for (let x = xL; x <= xR; x++) {
+        if (darkAt(x, y)) ink = true;
+      }
+      if (!ink) run += 1;
+      else {
+        maxPaperRun = Math.max(maxPaperRun, run);
+        run = 0;
+      }
+    }
     const hollow = paper > 2 || dark < (wall.y1 - wall.y0) * 0.7;
+    const gapOk = maxPaperRun <= 5;
     return {
-      ok: !hollow && wash >= 6,
-      reason: hollow ? "hollow wall" : wash >= 6 ? "ok" : "no wash over crest",
+      ok: !hollow && wash >= 6 && gapOk,
+      reason: hollow
+        ? "hollow wall"
+        : !gapOk
+          ? `paper gap above crest (${maxPaperRun}px run)`
+          : wash >= 6
+            ? "ok"
+            : "no wash over crest",
+      maxPaperRun,
       wall,
       span: cols.length,
       paper,

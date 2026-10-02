@@ -25,8 +25,10 @@ export type PlanShelterInput = {
 const WALL_CALM_FRAC = 0.1;
 const BEACH_CALM_FRAC = 0.3;
 const SIDE_CALM_FRAC = 0.1;
-/** Calm-band floor as a share of forecast chop — still inks at ~3 m/s. */
-const CALM_ROUGHNESS_MULT = 0.42;
+/** Calm-band floor — near-empty ink, not a second full chop field. */
+export const CALM_ROUGHNESS_MULT = 0.06;
+/** After the calm band, reach full chop over this share of pool depth (steeper than a linear ramp). */
+export const SHELTER_RAMP_FRAC = 0.32;
 
 /** At or below this mean, the whole pool is the quiet patch. Metres per second. */
 export const QUIET_CALM_MS = 2.5;
@@ -190,8 +192,10 @@ export function graduatedShelterMultiplier(
   if (calmFrac <= 0) return 1;
   const u = planUpwindFraction(point, input.fromDeg);
   if (u <= calmFrac) return CALM_ROUGHNESS_MULT;
-  const t = (u - calmFrac) / (1 - calmFrac);
-  const eased = t * t * (3 - 2 * t);
+  const rampEnd = Math.min(1, calmFrac + SHELTER_RAMP_FRAC);
+  if (u >= rampEnd) return 1;
+  const t = (u - calmFrac) / (rampEnd - calmFrac);
+  const eased = t * t * t;
   return CALM_ROUGHNESS_MULT + eased * (1 - CALM_ROUGHNESS_MULT);
 }
 
