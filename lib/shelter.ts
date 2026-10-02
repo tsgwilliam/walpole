@@ -25,9 +25,9 @@ export type PlanShelterInput = {
 const WALL_CALM_FRAC = 0.1;
 const BEACH_CALM_FRAC = 0.3;
 const SIDE_CALM_FRAC = 0.1;
-/** Calm-band floor — near-empty ink, not a second full chop field. */
-export const CALM_ROUGHNESS_MULT = 0.06;
-/** After the calm band, reach full chop over this share of pool depth (steeper than a linear ramp). */
+/** Most-sheltered chop still draws — this is the ink strength floor (opacity scale). */
+export const SHELTER_FADE_MIN = 0.22;
+/** After the calm band, reach full chop over this share of pool depth. */
 export const SHELTER_RAMP_FRAC = 0.32;
 
 /** At or below this mean, the whole pool is the quiet patch. Metres per second. */
@@ -177,26 +177,36 @@ export function planCalmBandFraction(fromDeg: number, wallShelters: boolean): nu
 }
 
 /**
- * Continuous 0–1 multiplier for plan chop roughness. Calm sits upwind; the
- * lee ramps smoothly to full forecast roughness.
+ * 0 upwind (most sheltered) → 1 downwind (full forecast chop). Strokes stay
+ * visible; plan ink fades with this strength instead of dropping out.
  */
-export function graduatedShelterMultiplier(
+export function graduatedShelterStrength(
   point: PlanPoint,
   input: PlanShelterInput,
   meanMs: number,
 ): number {
   const ms = Number.isFinite(meanMs) ? Math.max(0, meanMs) : 0;
-  if (ms < QUIET_CALM_MS) return CALM_ROUGHNESS_MULT;
+  if (ms < QUIET_CALM_MS) return SHELTER_FADE_MIN;
   if (!Number.isFinite(input.fromDeg)) return 1;
   const calmFrac = planCalmBandFraction(input.fromDeg, input.wallShelters);
   if (calmFrac <= 0) return 1;
   const u = planUpwindFraction(point, input.fromDeg);
-  if (u <= calmFrac) return CALM_ROUGHNESS_MULT;
+  if (u <= calmFrac) return 0;
   const rampEnd = Math.min(1, calmFrac + SHELTER_RAMP_FRAC);
   if (u >= rampEnd) return 1;
   const t = (u - calmFrac) / (rampEnd - calmFrac);
   const eased = t * t * t;
-  return CALM_ROUGHNESS_MULT + eased * (1 - CALM_ROUGHNESS_MULT);
+  return eased;
+}
+
+/** @deprecated Use graduatedShelterStrength for ink fade. */
+export function graduatedShelterMultiplier(
+  point: PlanPoint,
+  input: PlanShelterInput,
+  meanMs: number,
+): number {
+  const s = graduatedShelterStrength(point, input, meanMs);
+  return SHELTER_FADE_MIN + s * (1 - SHELTER_FADE_MIN);
 }
 
 export function quieterZone(input: {

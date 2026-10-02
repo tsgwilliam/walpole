@@ -1,6 +1,11 @@
 import type { ChopLevel } from "./chop";
 import type { PlanPoint } from "./pool-plan";
-import { graduatedShelterMultiplier, polygonArea, type PlanShelterInput } from "./shelter";
+import {
+  graduatedShelterStrength,
+  polygonArea,
+  SHELTER_FADE_MIN,
+  type PlanShelterInput,
+} from "./shelter";
 
 /** Vertical gap between wind-aligned chop strokes, in plan SVG units. */
 export const PLAN_CHOP_ROW_GAP = 13;
@@ -34,8 +39,18 @@ export function roughnessAt(
 ): number {
   const base = planBaseRoughness(chopLevel, meanMs);
   if (base < 0.02) return 0;
-  if (!shelter) return base;
-  return base * graduatedShelterMultiplier(point, shelter, meanMs);
+  return base;
+}
+
+/** Fade strength 0–1 for sheltered plan ink (opacity / width), not amplitude. */
+export function planShelterFade(
+  point: PlanPoint,
+  shelter: PlanShelterInput | null,
+  meanMs: number,
+): number {
+  if (!shelter) return 1;
+  const strength = graduatedShelterStrength(point, shelter, meanMs);
+  return SHELTER_FADE_MIN + strength * (1 - SHELTER_FADE_MIN);
 }
 
 /** Plan ink strength from mean wind (m/s). Calm stays soft; a gale does not pile on. */

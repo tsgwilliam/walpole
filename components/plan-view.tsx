@@ -9,6 +9,7 @@ import {
   chopLocalToScreen,
   chopRoughness,
   planChopInk,
+  planShelterFade,
   planWindRoughBoost,
   roughnessAt,
   waveScanline,
@@ -187,19 +188,22 @@ function RoughnessField({
     const stepY = PLAN_CHOP_ROW_GAP;
 
     for (let ly = -half; ly <= half; ly += stepY) {
-      const sample = roughnessAt(
-        localToPlan(0, ly, mid, travel, layout),
-        chopLevel,
-        shelter,
-        meanMs ?? 0,
-      );
+      const planPoint = localToPlan(0, ly, mid, travel, layout);
+      const fade = planShelterFade(planPoint, shelter, meanMs ?? 0);
+      const sample = roughnessAt(planPoint, chopLevel, shelter, meanMs ?? 0);
       const rough =
-        sample < 0.08 ? sample : sample + windBoost * (1 - sample * 0.35);
+        sample < 0.08 ? sample : sample + windBoost * fade * (1 - sample * 0.35);
       const ink = planChopInk(rough);
       if (!ink) continue;
       const drift = phase + ly * 0.04;
       const d = waveScanline(-half, half, ly, ink.amp, drift, 6);
-      if (d) rows.push({ d, opacity: ink.opacity, width: ink.width });
+      if (d) {
+        rows.push({
+          d,
+          opacity: ink.opacity * fade,
+          width: ink.width * (0.62 + 0.38 * fade),
+        });
+      }
     }
 
     return rows;

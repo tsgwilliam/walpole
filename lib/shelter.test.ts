@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { poolDepthM, poolOutline } from "./geography.ts";
 import {
+  graduatedShelterStrength,
   graduatedShelterMultiplier,
   planCalmBandFraction,
   planUpwindFraction,
@@ -15,10 +16,10 @@ test("graduated shelter is calm upwind and ramps to full chop downwind", () => {
   const north = { fromDeg: 0, compass: "N", wallShelters: true };
   const wall = { x: 0, y: poolOutline()[0].y };
   const beach = { x: 0, y: poolOutline()[2].y };
-  const calmWall = graduatedShelterMultiplier(wall, north, 6);
-  const openBeach = graduatedShelterMultiplier(beach, north, 6);
+  const calmWall = graduatedShelterStrength(wall, north, 6);
+  const openBeach = graduatedShelterStrength(beach, north, 6);
   assert.ok(calmWall < openBeach);
-  assert.ok(calmWall <= 0.08);
+  assert.equal(calmWall, 0);
   assert.equal(openBeach, 1);
   assert.ok(planCalmBandFraction(0, true) === 0.1);
   assert.equal(planCalmBandFraction(0, false), 0);

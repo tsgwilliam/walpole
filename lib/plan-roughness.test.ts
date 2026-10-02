@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PLAN_CHOP_ROW_GAP, chopLocalToScreen, planChopInk, roughnessAt } from "./plan-roughness.ts";
+import {
+  PLAN_CHOP_ROW_GAP,
+  chopLocalToScreen,
+  planChopInk,
+  planShelterFade,
+  roughnessAt,
+} from "./plan-roughness.ts";
 import { poolPlanCorners } from "./pool-plan.ts";
 
 test("a light breeze still inks sparse chop, including a sheltered step-down", () => {
   const open = roughnessAt({ x: 0, y: -40 }, 2, null, 3.2);
   const northWind = { fromDeg: 0, compass: "N", wallShelters: true };
-  const sheltered = roughnessAt({ x: 0, y: poolPlanCorners().nw.y }, 2, northWind, 3.2);
+  const wallPt = { x: 0, y: poolPlanCorners().nw.y };
   const beach = poolPlanCorners().se;
-  const exposed = roughnessAt(beach, 2, northWind, 3.2);
+  const shelteredFade = planShelterFade(wallPt, northWind, 3.2);
+  const exposedFade = planShelterFade(beach, northWind, 3.2);
   assert.ok(open >= 0.22);
-  assert.ok(sheltered < exposed * 0.35);
-  assert.ok(exposed >= 0.22);
-  const ink = planChopInk(exposed);
+  assert.ok(shelteredFade < exposedFade * 0.5);
+  assert.equal(exposedFade, 1);
+  const ink = planChopInk(roughnessAt(beach, 2, northWind, 3.2));
   assert.ok(ink);
   assert.ok(ink.opacity >= 0.45);
   assert.ok(ink.width >= 1.1);

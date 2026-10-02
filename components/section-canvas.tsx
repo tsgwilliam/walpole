@@ -11,6 +11,7 @@ import {
   heldRipple,
   heldSurface,
   resolveSection,
+  seaWashClearsWall,
   surfaceRipple,
   swellOffset,
   waterlineU,
@@ -186,12 +187,15 @@ function paint(
   const ySurface = (u: number) => yOf(surface(u));
 
   const waveY = (depth: number) => (u: number) => {
-    const y = ySurface(u) + depth;
-    if (section.mode === "sea" && u >= WALL_U0 && u <= WALL_U1) {
-      if (surface(u) <= 1) return Number.NaN;
-      if (y >= wallY - 1) return Number.NaN;
+    if (
+      section.mode === "sea" &&
+      u >= WALL_U0 &&
+      u <= WALL_U1 &&
+      !seaWashClearsWall(surface(u), depth, PX)
+    ) {
+      return Number.NaN;
     }
-    return y;
+    return ySurface(u) + depth;
   };
 
   const waveBand = (u0: number, u1: number) => {
@@ -268,21 +272,7 @@ function paint(
     ctx.strokeRect(wallX, wallY, wallW, wallH);
   }
 
-  if (section.mode === "sea") {
-    waveBand(WALL_U0, RATIO_SUM);
-    let minSurfaceY = Infinity;
-    for (let u = WALL_U0; u <= WALL_U1 + 1e-6; u += 0.05) {
-      if (surface(u) <= 1) continue;
-      minSurfaceY = Math.min(minSurfaceY, ySurface(u));
-    }
-    if (Number.isFinite(minSurfaceY) && minSurfaceY < wallY - 1.5) {
-      for (let y = minSurfaceY; y <= wallY; y += 1.75) {
-        drawRuns(ctx, WALL_U0, WALL_U1, () => y, 1.2, 0.94);
-      }
-      ctx.fillStyle = INK;
-      ctx.fillRect(wallX, wallY - 1, wallW, 2.2);
-    }
-  }
+  if (section.mode === "sea") waveBand(WALL_U0, RATIO_SUM);
 }
 
 export function SectionCanvas({
